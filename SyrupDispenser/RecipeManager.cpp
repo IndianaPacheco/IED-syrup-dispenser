@@ -18,14 +18,22 @@ bool RecipeManager::beginCard() {
 }
 
 bool RecipeManager::buildIndex() {
+  count_ = 0;
+  maxId_ = 0;
+
+  // No file yet: start with an empty list. addRecipe() creates it.
+  if (!SD.exists(RECIPE_FILE)) {
+    Serial.print(RECIPE_FILE);
+    Serial.println(" not found; starting with no recipes.");
+    return true;
+  }
+
   File file = SD.open(RECIPE_FILE, FILE_READ);
   if (!file) {
     Serial.print("Could not open ");
     Serial.println(RECIPE_FILE);
     return false;
   }
-
-  count_ = 0;
 
   while (file.available()) {
     // Remember where this line starts so we can jump back to it later.
@@ -74,6 +82,9 @@ bool RecipeManager::buildIndex() {
     IndexEntry& entry = index_[count_];
     entry.fileOffset = offset;
     entry.id = doc["id"].as<int>();
+    if (entry.id > maxId_) {
+      maxId_ = entry.id;
+    }
 
     // Copy the name, truncating it safely if it is too long.
     strncpy(entry.name, doc["name"].as<const char*>(), MAX_NAME_LENGTH - 1);
@@ -87,7 +98,66 @@ bool RecipeManager::buildIndex() {
   Serial.print("Recipes indexed: ");
   Serial.println(count_);
 
-  return count_ > 0;
+  return true;
+}
+
+bool RecipeManager::addRecipe(const char* name, const float amountsMl[PUMP_COUNT]) {
+  if (isFull()) {
+    Serial.println("Cannot add recipe: index is full.");
+    return false;
+  }
+
+  // Build the line with ArduinoJson so the name is escaped properly.
+  JsonDocument doc;
+  doc["id"] = maxId_ + 1;
+  doc["name"] = name;
+  JsonArray amounts = doc["amounts_ml"].to<JsonArray>();
+  for (int i = 0; i < PUMP_COUNT; i++) {
+    amounts.add(amountsMl[i]);
+  }
+
+  char line[MAX_JSON_LINE];
+  size_t length = serializeJson(doc, line, sizeof(line));
+  if (length == 0 || length >= sizeof(line) - 1) {
+    Serial.println("Cannot add recipe: line too long.");
+    return false;
+  }
+
+  // If the last line has no newline (common when the file was edited
+  // by hand), add one so the new recipe starts on its own line.
+  bool needsNewline = false;
+  File existing = SD.open(RECIPE_FILE, FILE_READ);
+  if (existing) {
+    size_t size = existing.size();
+    if (size > 0 && existing.seek(size - 1)) {
+      needsNewline = existing.read() != '\n';
+    }
+    existing.close();
+  }
+
+  File file = SD.open(RECIPE_FILE, FILE_APPEND);  // creates if missing
+  if (!file) {
+    Serial.println("Cannot add recipe: file did not open for writing.");
+    return false;
+  }
+
+  bool ok = true;
+  if (needsNewline) {
+    ok = file.print('\n') == 1;
+  }
+  ok = ok && file.write((const uint8_t*)line, length) == length;
+  ok = ok && file.print('\n') == 1;
+  file.close();
+
+  if (!ok) {
+    Serial.println("Cannot add recipe: write failed (card full?).");
+    return false;
+  }
+
+  Serial.print("Saved recipe: ");
+  Serial.println(line);
+
+  return buildIndex();
 }
 
 const char* RecipeManager::name(int index) const {

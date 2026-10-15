@@ -11,6 +11,7 @@
     RecipeManager.*     reads recipes from the microSD card
     Display.*           everything shown on the LCD
     Input.*             debounced buttons + rotary encoder
+    DrinkEditor.*       programming new drinks with the knob
     SyrupDispenser.ino  (this file) ties them together
 
   How it works (state machine):
@@ -19,6 +20,10 @@
                      stop                 stop --> CANCELLED
                        v
                      MENU          DONE / CANCELLED / ERROR --press--> MENU
+
+    The last menu entry is "+ New drink":
+    MENU --press--> PROGRAM (name -> pump amounts -> save) --saved--> MENU
+                       stop goes back a step; from the name step, to MENU
 
   IMPORTANT:
   1. Test with pump power disconnected first.
@@ -33,6 +38,7 @@
 
 #include "Config.h"
 #include "Display.h"
+#include "DrinkEditor.h"
 #include "Input.h"
 #include "PumpController.h"
 #include "RecipeManager.h"
@@ -44,6 +50,7 @@
 PumpController  pumps;
 RecipeManager   recipes;
 Display         display;
+DrinkEditor     editor;
 RotaryEncoder   encoder(ENCODER_CLK_PIN, ENCODER_DT_PIN);
 DebouncedButton selectButton(ENCODER_SW_PIN, INPUT);  // external pull-up
 DebouncedButton stopButton(STOP_BUTTON_PIN, INPUT_PULLUP);
@@ -58,22 +65,68 @@ enum class State {
   Dispensing,  // pumps running
   Done,        // drink finished
   Cancelled,   // stopped by the stop button
+  Program,     // creating a new drink in the DrinkEditor
   Error,       // problem with one recipe; press to return to menu
-  Fatal        // startup failed (no SD card / recipes); needs reset
+  Fatal        // startup failed (no SD card); needs reset
 };
 
 State state = State::Menu;
-int selectedRecipe = 0;      // index into the recipe list
+int selectedRecipe = 0;      // index into the menu; == recipes.count()
+                             // means the "+ New drink" entry
 int shownActivePumps = -1;   // last pump count drawn on the LCD
 
 // ============================================================
 // STATE TRANSITIONS
 // ============================================================
 
+// The menu lists every recipe, plus "+ New drink" while there is room.
+int menuLength() {
+  return recipes.count() + (recipes.isFull() ? 0 : 1);
+}
+
+bool isNewDrinkSelected() {
+  return selectedRecipe == recipes.count();
+}
+
 void goToMenu() {
   state = State::Menu;
-  display.showMenu(selectedRecipe, recipes.count(),
-                   recipes.name(selectedRecipe));
+  if (isNewDrinkSelected()) {
+    display.showNewDrinkItem();
+  } else {
+    display.showMenu(selectedRecipe, recipes.count(),
+                     recipes.name(selectedRecipe));
+  }
+}
+
+void startProgramming() {
+  state = State::Program;
+  editor.start();
+  editor.draw(display);
+}
+
+void saveProgrammedDrink() {
+  if (!recipes.addRecipe(editor.name(), editor.amounts())) {
+    showRecipeError("Save failed");
+    return;
+  }
+
+  // Show the new drink, which is now the last recipe.
+  selectedRecipe = recipes.count() - 1;
+  goToMenu();
+}
+
+void handleEditorResult(DrinkEditor::Result result) {
+  switch (result) {
+    case DrinkEditor::Result::Editing:
+      editor.draw(display);
+      break;
+    case DrinkEditor::Result::Save:
+      saveProgrammedDrink();
+      break;
+    case DrinkEditor::Result::Cancel:
+      goToMenu();
+      break;
+  }
 }
 
 // A problem with the chosen recipe. The user can pick another one.
@@ -125,13 +178,20 @@ void startDispensing() {
 // INPUT HANDLERS
 // ============================================================
 
-// Knob turned: scroll the menu (wraps around at both ends).
+// Knob turned: scroll the menu (wraps around at both ends),
+// or change the value being edited.
 void onEncoderTurn(int step) {
+  if (state == State::Program) {
+    editor.turn(step);
+    editor.draw(display);
+    return;
+  }
+
   if (state != State::Menu) {
     return;
   }
 
-  int count = recipes.count();
+  int count = menuLength();
   selectedRecipe = (selectedRecipe + step + count) % count;
   goToMenu();
 }
@@ -140,8 +200,16 @@ void onEncoderTurn(int step) {
 void onSelectPress() {
   switch (state) {
     case State::Menu:
-      state = State::Confirm;
-      display.showConfirm(recipes.name(selectedRecipe));
+      if (isNewDrinkSelected()) {
+        startProgramming();
+      } else {
+        state = State::Confirm;
+        display.showConfirm(recipes.name(selectedRecipe));
+      }
+      break;
+
+    case State::Program:
+      handleEditorResult(editor.press());
       break;
 
     case State::Confirm:
@@ -160,7 +228,8 @@ void onSelectPress() {
   }
 }
 
-// Stop pressed: abort dispensing, or back out of the confirm screen.
+// Stop pressed: abort dispensing, back out of the confirm screen,
+// or go back a step while programming a drink.
 void onStopPress() {
   if (state == State::Dispensing) {
     pumps.stopAll();
@@ -169,6 +238,8 @@ void onStopPress() {
     Serial.println("Dispensing cancelled.");
   } else if (state == State::Confirm) {
     goToMenu();
+  } else if (state == State::Program) {
+    handleEditorResult(editor.back());
   }
 }
 
@@ -210,8 +281,9 @@ void setup() {
     return;
   }
 
+  // Zero recipes is fine: the menu still offers "+ New drink".
   if (!recipes.buildIndex()) {
-    fail("No valid recipes");
+    fail("Can't read recipes");
     return;
   }
 

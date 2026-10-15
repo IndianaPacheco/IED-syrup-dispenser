@@ -23,13 +23,22 @@ public:
   // Returns false if the card is missing, unformatted, or miswired.
   bool beginCard();
 
-  // Scan the recipe file once and build the in-memory index.
+  // Scan the recipe file and build the in-memory index.
   // Invalid lines are skipped (and reported on Serial).
-  // Returns false if no valid recipes were found.
+  // A missing file counts as zero recipes. Returns false only if
+  // the file exists but cannot be opened.
   bool buildIndex();
 
   // Number of valid recipes found by buildIndex().
   int count() const { return count_; }
+
+  // True when no more recipes can be added.
+  bool isFull() const { return count_ >= MAX_RECIPES; }
+
+  // Append a new recipe to the end of the recipe file, giving it
+  // the next free id, then rebuild the index. The new recipe is
+  // the last one (index count() - 1). Returns false on any error.
+  bool addRecipe(const char* name, const float amountsMl[PUMP_COUNT]);
 
   // Display name of recipe 'index' (0-based).
   const char* name(int index) const;
@@ -52,4 +61,5 @@ private:
 
   IndexEntry index_[MAX_RECIPES];
   int count_ = 0;
+  int maxId_ = 0;  // highest id seen, so new recipes get a unique one
 };

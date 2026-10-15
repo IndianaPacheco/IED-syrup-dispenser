@@ -11,6 +11,7 @@ SyrupDispenser/          Arduino sketch (open SyrupDispenser.ino)
   RecipeManager.*        recipe index + loading from the SD card
   Display.*              LCD screens
   Input.*                debounced buttons + rotary encoder
+  DrinkEditor.*          programming new drinks with the knob
 sd_card/recipes.jsonl    example recipe file (copy to the SD card root)
 HardwareTests/           standalone sketches to check each part
   LcdTest/               I2C scan, backlight, pixels, counter
@@ -83,6 +84,18 @@ One JSON object per line in `/recipes.jsonl` on a FAT32 microSD card:
 ```
 
 The eight numbers are mL for pumps 1–8.
+
+### Programming a drink on the machine
+
+Scroll past the last drink to **+ New drink** and press the knob.
+
+1. **Name**: turn to pick a character, then press to add it. Pick `[Delete]` to erase the last character, or `[Done]` when you're finished (up to 15 characters).
+2. **Amounts**: for each pump 1–8, turn to set the mL, then press to go to the next pump. Each click is 0.5 mL, and spinning fast moves 2 mL per click.
+3. **Save**: press to save. The drink is added to the end of `/recipes.jsonl` with the next free `id`, and the menu jumps to it.
+
+The stop button goes back one step. On the name step it cancels and returns to the menu. If the card has no `recipes.jsonl` yet, the menu shows only **+ New drink**, and saving creates the file.
+
+Drinks can't be edited or deleted on the machine yet. To change one, take out the SD card and edit `/recipes.jsonl` on a computer. Keep one drink per line, and give each drink a unique `id`.
 
 ## Safety
 

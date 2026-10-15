@@ -82,3 +82,15 @@ constexpr int ENCODER_SW_PIN  = 35;
 constexpr int STOP_BUTTON_PIN = 4;
 
 constexpr uint32_t DEBOUNCE_MS = 35;
+
+// ============================================================
+// DRINK PROGRAMMING (DrinkEditor)
+// ============================================================
+
+// mL added or removed per knob click when setting a pump amount.
+constexpr float EDIT_ML_STEP = 0.5f;
+
+// Clicks closer together than this count as a fast spin and take
+// EDIT_ML_STEP * EDIT_FAST_MULTIPLIER per click instead.
+constexpr uint32_t EDIT_FAST_TURN_MS    = 60;
+constexpr float    EDIT_FAST_MULTIPLIER = 4.0f;

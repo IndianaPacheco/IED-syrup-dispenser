@@ -25,6 +25,15 @@ public:
   void showDone();
   void showCancelled();
 
+  // Last menu entry, after all the drinks.
+  void showNewDrinkItem();
+
+  // Drink programming screens (see DrinkEditor).
+  void showNameEntry(const char* name, const char* choice);
+  void showAmountEntry(int pump, float amountMl);
+  void showSaveConfirm(const char* name);
+  void showNothingToSave();
+
   // Top row reads "ERROR"; bottom row shows the message.
   void showError(const char* message);
 

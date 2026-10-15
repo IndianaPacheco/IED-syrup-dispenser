@@ -50,6 +50,44 @@ void Display::showCancelled() {
   printLine(1, "Press to return");
 }
 
+void Display::showNewDrinkItem() {
+  printLine(0, "+ New drink");
+  printLine(1, "Press to program");
+}
+
+void Display::showNameEntry(const char* name, const char* choice) {
+  // Name so far with an underscore as the cursor, e.g. "Mocha_".
+  char top[LCD_COLUMNS + 1];
+  snprintf(top, sizeof(top), "%s_", name);
+
+  char bottom[LCD_COLUMNS + 1];
+  snprintf(bottom, sizeof(bottom), "Pick: %s", choice);
+
+  printLine(0, top);
+  printLine(1, bottom);
+}
+
+void Display::showAmountEntry(int pump, float amountMl) {
+  char top[24];  // printLine() cuts it to the screen width
+  snprintf(top, sizeof(top), "Pump %d of %d", pump + 1, PUMP_COUNT);
+
+  char bottom[LCD_COLUMNS + 1];
+  snprintf(bottom, sizeof(bottom), "%.1f mL", amountMl);
+
+  printLine(0, top);
+  printLine(1, bottom);
+}
+
+void Display::showSaveConfirm(const char* name) {
+  printLine(0, "Save? Press=yes");
+  printLine(1, name);
+}
+
+void Display::showNothingToSave() {
+  printLine(0, "All pumps 0 mL");
+  printLine(1, "Stop to go back");
+}
+
 void Display::showError(const char* message) {
   printLine(0, "ERROR");
   printLine(1, message);
