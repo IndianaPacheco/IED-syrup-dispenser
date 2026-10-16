@@ -52,7 +52,7 @@ RecipeManager   recipes;
 Display         display;
 DrinkEditor     editor;
 RotaryEncoder   encoder(ENCODER_CLK_PIN, ENCODER_DT_PIN);
-DebouncedButton selectButton(ENCODER_SW_PIN, INPUT);  // external pull-up
+DebouncedButton selectButton(ENCODER_SW_PIN, INPUT);  // KY-040 onboard pull-up
 DebouncedButton stopButton(STOP_BUTTON_PIN, INPUT_PULLUP);
 
 // ============================================================

@@ -6,7 +6,8 @@
   What it does:
     - At startup, prints the idle level of every input pin. All should
       read HIGH. A LOW at idle usually means a missing pull-up resistor
-      (GPIO 34 and 35 need external 10 kOhm pull-ups to 3.3 V).
+      (GPIO 34 and 35 rely on the KY-040's onboard 10 kOhm pull-ups,
+      so check that the module's + pin is wired to 3.3 V).
     - Prints the knob position every time it moves, and a message on
       every encoder press and stop-button press.
     - Type 'r' in Serial Monitor to print the raw pin levels again.
@@ -99,8 +100,8 @@ void setup() {
   Serial.println("=== ENCODER + BUTTON TEST ===");
 
   pinMode(ENCODER_CLK_PIN, INPUT_PULLUP);
-  pinMode(ENCODER_DT_PIN, INPUT);   // input-only pin, external pull-up
-  pinMode(ENCODER_SW_PIN, INPUT);   // input-only pin, external pull-up
+  pinMode(ENCODER_DT_PIN, INPUT);   // input-only pin, KY-040 pull-up
+  pinMode(ENCODER_SW_PIN, INPUT);   // input-only pin, KY-040 pull-up
   pinMode(STOP_BUTTON_PIN, INPUT_PULLUP);
   delay(10);
 

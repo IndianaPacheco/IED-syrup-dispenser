@@ -72,7 +72,9 @@ constexpr int LCD_SCL_PIN = 22;
 // ============================================================
 
 // GPIO 34 and 35 are input-only and have NO internal pull-ups.
-// Wire external 10 kOhm pull-up resistors to 3.3 V on DT and SW.
+// The KY-040 module's onboard 10 kOhm pull-ups cover DT and SW,
+// so no extra resistors are needed. Power the module's + pin from
+// 3.3 V (not 5 V), or the pull-ups put 5 V on these pins.
 constexpr int ENCODER_CLK_PIN = 33;
 constexpr int ENCODER_DT_PIN  = 34;
 constexpr int ENCODER_SW_PIN  = 35;

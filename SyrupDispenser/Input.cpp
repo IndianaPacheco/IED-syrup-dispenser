@@ -49,7 +49,7 @@ RotaryEncoder::RotaryEncoder(int clkPin, int dtPin)
 
 void RotaryEncoder::begin() {
   pinMode(clkPin_, INPUT_PULLUP);
-  pinMode(dtPin_, INPUT);  // GPIO 34: external pull-up required
+  pinMode(dtPin_, INPUT);  // GPIO 34: uses the KY-040's onboard pull-up
   lastClk_ = digitalRead(clkPin_);
 }
 

@@ -58,11 +58,13 @@ All pins are set in `SyrupDispenser/Config.h`.
 | Signal          | GPIO | Notes                                          |
 |-----------------|------|------------------------------------------------|
 | Encoder CLK     | 33   | Internal pull-up                               |
-| Encoder DT      | 34   | Input-only: needs external 10 kΩ pull-up to 3.3 V |
-| Encoder SW      | 35   | Input-only: needs external 10 kΩ pull-up to 3.3 V |
+| Encoder DT      | 34   | Input-only: uses the KY-040's onboard pull-up  |
+| Encoder SW      | 35   | Input-only: uses the KY-040's onboard pull-up  |
 | Stop button     | 4    | Wired to GND, internal pull-up                 |
 
 Buttons are active LOW (pressed = connected to GND).
+
+The KY-040 has 10 kΩ pull-ups (marked `103`) on CLK, DT and SW, so no extra resistors are needed. Power its **+** pin from **3.3 V**, not 5 V, or those pull-ups put 5 V on the ESP32 pins.
 
 ## Hardware tests
 
