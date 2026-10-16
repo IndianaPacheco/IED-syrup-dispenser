@@ -1,6 +1,6 @@
 # Automatic Syrup Dispenser
 
-ESP32-based dispenser with eight diaphragm pumps. It reads drink recipes from a microSD card, and you pick a drink with a rotary encoder and a 16x2 LCD.
+ESP32-based dispenser with eight diaphragm pumps. It reads drink recipes from a microSD card, and you pick a drink with a rotary encoder and a 20x4 LCD.
 
 ## Project layout
 
@@ -46,7 +46,7 @@ All pins are set in `SyrupDispenser/Config.h`.
 | MISO      | 19   |
 | MOSI      | 23   |
 
-### LCD (16x2, I2C, address `0x27`)
+### LCD (20x4, I2C, address `0x27`)
 
 | LCD backpack | GPIO |
 |--------------|------|

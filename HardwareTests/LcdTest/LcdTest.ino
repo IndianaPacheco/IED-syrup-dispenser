@@ -1,7 +1,7 @@
 /*
   LCD HARDWARE TEST
   -----------------
-  Checks the 16x2 I2C LCD on its own, without the rest of the dispenser.
+  Checks the 20x4 I2C LCD on its own, without the rest of the dispenser.
 
   What it does:
     1. Scans the I2C bus and prints every device address it finds.
@@ -12,7 +12,7 @@
        pixel and adjust the contrast pot on the back of the LCD.
     4. Prints a test pattern, then counts up once per second forever.
 
-  Pass: backlight blinks, all 32 blocks are solid, text is readable,
+  Pass: backlight blinks, all 80 blocks are solid, text is readable,
         and the counter keeps going up.
 
   Open Serial Monitor at 115200 baud to see the scan results.
@@ -25,8 +25,8 @@
 
 // Must match SyrupDispenser/Config.h
 constexpr uint8_t LCD_I2C_ADDRESS = 0x27;
-constexpr int LCD_COLUMNS = 16;
-constexpr int LCD_ROWS    = 2;
+constexpr int LCD_COLUMNS = 20;
+constexpr int LCD_ROWS    = 4;
 constexpr int LCD_SDA_PIN = 21;
 constexpr int LCD_SCL_PIN = 22;
 
@@ -93,8 +93,12 @@ void setup() {
   Serial.println("Step 3: text pattern");
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("0123456789ABCDEF");
+  lcd.print("0123456789ABCDEFGHIJ");
   lcd.setCursor(0, 1);
+  lcd.print("Row 2");
+  lcd.setCursor(0, 2);
+  lcd.print("Row 3");
+  lcd.setCursor(0, 3);
   lcd.print("LCD TEST OK");
   delay(3000);
 
@@ -111,6 +115,6 @@ void loop() {
   if (millis() - lastUpdate >= 1000) {
     lastUpdate = millis();
     lcd.setCursor(0, 1);
-    lcd.printf("%-16lu", (unsigned long)seconds++);
+    lcd.printf("%-20lu", (unsigned long)seconds++);
   }
 }

@@ -2,7 +2,7 @@
   AUTOMATIC SYRUP DISPENSER
   Controller: ESP32 DevKit V1
   Storage:    SPI microSD card (recipes.jsonl)
-  Interface:  16x2 I2C LCD + KY-040 rotary encoder
+  Interface:  20x4 I2C LCD + KY-040 rotary encoder
   Outputs:    8 active-HIGH MOSFET pump drivers
 
   Files in this sketch:
@@ -133,7 +133,7 @@ void handleEditorResult(DrinkEditor::Result result) {
 void showRecipeError(const char* message) {
   pumps.stopAll();
   state = State::Error;
-  display.showError(message);
+  display.showError(message, "Press to return");
   Serial.print("Recipe error: ");
   Serial.println(message);
 }
@@ -142,7 +142,7 @@ void showRecipeError(const char* message) {
 void fail(const char* message) {
   pumps.stopAll();
   state = State::Fatal;
-  display.showError(message);
+  display.showError(message, "Reset to retry");
   Serial.print("Fatal: ");
   Serial.println(message);
 }

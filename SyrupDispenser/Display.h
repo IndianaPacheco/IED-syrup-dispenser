@@ -1,7 +1,7 @@
 /*
   Display.h
   ---------
-  Everything shown on the 16x2 LCD. The rest of the program says
+  Everything shown on the 20x4 LCD. The rest of the program says
   WHAT to show (e.g. showDone()); this module decides how it looks.
 */
 
@@ -34,12 +34,16 @@ public:
   void showSaveConfirm(const char* name);
   void showNothingToSave();
 
-  // Top row reads "ERROR"; bottom row shows the message.
-  void showError(const char* message);
+  // Top row reads "ERROR", then the message, then an optional hint
+  // on the bottom row (e.g. "Press to return").
+  void showError(const char* message, const char* hint = "");
 
 private:
   // Clear one row and print text, cut off at the screen width.
   void printLine(int row, const char* text);
+
+  // Print text across two rows, wrapping long names onto the second.
+  void printWrapped(int row, const char* text);
 
   LiquidCrystal_I2C lcd_;
 };

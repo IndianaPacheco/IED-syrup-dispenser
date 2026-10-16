@@ -58,12 +58,12 @@ constexpr int MAX_NAME_LENGTH = 40;   // includes the '\0'
 constexpr int MAX_JSON_LINE   = 512;  // longest allowed recipe line
 
 // ============================================================
-// LCD (16x2, I2C)
+// LCD (20x4, I2C)
 // ============================================================
 
 constexpr uint8_t LCD_I2C_ADDRESS = 0x27;  // often 0x27 or 0x3F
-constexpr int LCD_COLUMNS = 16;
-constexpr int LCD_ROWS    = 2;
+constexpr int LCD_COLUMNS = 20;
+constexpr int LCD_ROWS    = 4;
 constexpr int LCD_SDA_PIN = 21;
 constexpr int LCD_SCL_PIN = 22;
 
