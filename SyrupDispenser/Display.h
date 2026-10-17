@@ -28,11 +28,20 @@ public:
   // Last menu entry, after all the drinks.
   void showNewDrinkItem();
 
-  // Drink programming screens (see DrinkEditor).
-  void showNameEntry(const char* name, const char* choice);
+  // Drink programming screens (see DrinkEditor). A ">" marks the
+  // selected letter or option.
+
+  // Name on top, then 'letters' laid out over the other three rows.
+  // A space is drawn as '_'.
+  void showLetterPicker(const char* name, const char* letters, int selected);
+
+  // Delete letter / Finish name / Exit no save (selected = 0..2).
+  void showNameCommands(const char* name, int selected);
+
   void showAmountEntry(int pump, float amountMl);
-  void showSaveConfirm(const char* name);
-  void showNothingToSave();
+
+  // Save drink / Edit drink / Exit no save (selected = 0..2).
+  void showFinishMenu(const char* name, bool canSave, int selected);
 
   // Top row reads "ERROR", then the message, then an optional hint
   // on the bottom row (e.g. "Press to return").
@@ -44,6 +53,12 @@ private:
 
   // Print text across two rows, wrapping long names onto the second.
   void printWrapped(int row, const char* text);
+
+  // "Name:" plus the end of the name and a '_' cursor, on row 0.
+  void printNameLine(const char* name);
+
+  // One menu option, with ">" in front if it is selected.
+  void printOption(int row, const char* text, bool selected);
 
   LiquidCrystal_I2C lcd_;
 };

@@ -1,22 +1,25 @@
 #include "DrinkEditor.h"
 
-// Choices on the name screen. Index 0 and 1 are commands; the rest
-// are the characters that can be added to the name.
-static constexpr int CHOICE_DONE   = 0;
-static constexpr int CHOICE_DELETE = 1;
-static const char NAME_CHARS[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "abcdefghijklmnopqrstuvwxyz"
-    "0123456789 -&'.";
-static constexpr int NAME_CHAR_COUNT = sizeof(NAME_CHARS) - 1;
-static constexpr int CHOICE_COUNT    = 2 + NAME_CHAR_COUNT;
-static constexpr int CHOICE_FIRST_CHAR = 2;  // 'A'
+// Name step: the letters come first, then the commands, all in one
+// list the knob scrolls through.
+static const char NAME_LETTERS[] = "abcdefghijklmnopqrstuvwxyz ";
+static constexpr int LETTER_COUNT = sizeof(NAME_LETTERS) - 1;
+static constexpr int NAME_DELETE  = LETTER_COUNT;
+static constexpr int NAME_FINISH  = LETTER_COUNT + 1;
+static constexpr int NAME_EXIT    = LETTER_COUNT + 2;
+static constexpr int NAME_CHOICES = LETTER_COUNT + 3;
+
+// Finish step menu.
+static constexpr int FINISH_SAVE    = 0;
+static constexpr int FINISH_EDIT    = 1;
+static constexpr int FINISH_EXIT    = 2;
+static constexpr int FINISH_CHOICES = 3;
 
 void DrinkEditor::start() {
   step_ = Step::Name;
   name_[0] = '\0';
   nameLength_ = 0;
-  choice_ = CHOICE_FIRST_CHAR;
+  choice_ = 0;  // 'a'
   pump_ = 0;
   for (int i = 0; i < PUMP_COUNT; i++) {
     amountsMl_[i] = 0;
@@ -28,7 +31,7 @@ void DrinkEditor::turn(int step) {
   switch (step_) {
     case Step::Name:
       // Wrap around the list in both directions.
-      choice_ = (choice_ + step + CHOICE_COUNT) % CHOICE_COUNT;
+      choice_ = (choice_ + step + NAME_CHOICES) % NAME_CHOICES;
       break;
 
     case Step::Amounts: {
@@ -45,7 +48,8 @@ void DrinkEditor::turn(int step) {
       break;
     }
 
-    case Step::Confirm:
+    case Step::Finish:
+      choice_ = (choice_ + step + FINISH_CHOICES) % FINISH_CHOICES;
       break;
   }
 }
@@ -53,18 +57,27 @@ void DrinkEditor::turn(int step) {
 DrinkEditor::Result DrinkEditor::press() {
   switch (step_) {
     case Step::Name:
-      if (choice_ == CHOICE_DONE) {
+      if (choice_ < LETTER_COUNT) {
+        bool leadingSpace = (nameLength_ == 0 && NAME_LETTERS[choice_] == ' ');
+        if (nameLength_ < NAME_LIMIT && !leadingSpace) {
+          // Capitalize the first letter of each word.
+          char letter = NAME_LETTERS[choice_];
+          bool startsWord = (nameLength_ == 0 || name_[nameLength_ - 1] == ' ');
+          name_[nameLength_++] = startsWord ? toupper(letter) : letter;
+          name_[nameLength_] = '\0';
+        }
+      } else if (choice_ == NAME_DELETE) {
+        if (nameLength_ > 0) {
+          name_[--nameLength_] = '\0';
+        }
+      } else if (choice_ == NAME_FINISH) {
+        trimName();
         if (nameLength_ > 0) {  // a drink needs a name
           step_ = Step::Amounts;
           pump_ = 0;
         }
-      } else if (choice_ == CHOICE_DELETE) {
-        if (nameLength_ > 0) {
-          name_[--nameLength_] = '\0';
-        }
-      } else if (nameLength_ < NAME_LIMIT) {
-        name_[nameLength_++] = NAME_CHARS[choice_ - CHOICE_FIRST_CHAR];
-        name_[nameLength_] = '\0';
+      } else if (choice_ == NAME_EXIT) {
+        return Result::Cancel;
       }
       break;
 
@@ -72,35 +85,24 @@ DrinkEditor::Result DrinkEditor::press() {
       if (pump_ < PUMP_COUNT - 1) {
         pump_++;
       } else {
-        step_ = Step::Confirm;
+        step_ = Step::Finish;
+        choice_ = FINISH_SAVE;
       }
       break;
 
-    case Step::Confirm:
-      if (hasAmounts()) {  // an all-zero drink can't be dispensed
-        return Result::Save;
-      }
-      break;
-  }
-  return Result::Editing;
-}
-
-DrinkEditor::Result DrinkEditor::back() {
-  switch (step_) {
-    case Step::Name:
-      return Result::Cancel;
-
-    case Step::Amounts:
-      if (pump_ > 0) {
-        pump_--;
-      } else {
+    case Step::Finish:
+      if (choice_ == FINISH_SAVE) {
+        if (hasAmounts()) {  // an all-zero drink can't be dispensed
+          return Result::Save;
+        }
+      } else if (choice_ == FINISH_EDIT) {
+        // Back to the name, keeping the amounts. The marker starts on
+        // "Finish name" so one press moves on to the amounts again.
         step_ = Step::Name;
+        choice_ = NAME_FINISH;
+      } else if (choice_ == FINISH_EXIT) {
+        return Result::Cancel;
       }
-      break;
-
-    case Step::Confirm:
-      step_ = Step::Amounts;
-      pump_ = PUMP_COUNT - 1;
       break;
   }
   return Result::Editing;
@@ -108,32 +110,20 @@ DrinkEditor::Result DrinkEditor::back() {
 
 void DrinkEditor::draw(Display& display) const {
   switch (step_) {
-    case Step::Name: {
-      char choice[16];
-      if (choice_ == CHOICE_DONE) {
-        strcpy(choice, "[Done]");
-      } else if (choice_ == CHOICE_DELETE) {
-        strcpy(choice, "[Delete]");
-      } else if (NAME_CHARS[choice_ - CHOICE_FIRST_CHAR] == ' ') {
-        strcpy(choice, "[Space]");
+    case Step::Name:
+      if (choice_ < LETTER_COUNT) {
+        display.showLetterPicker(name_, NAME_LETTERS, choice_);
       } else {
-        choice[0] = NAME_CHARS[choice_ - CHOICE_FIRST_CHAR];
-        choice[1] = '\0';
+        display.showNameCommands(name_, choice_ - NAME_DELETE);
       }
-      display.showNameEntry(name_, choice);
       break;
-    }
 
     case Step::Amounts:
       display.showAmountEntry(pump_, amountsMl_[pump_]);
       break;
 
-    case Step::Confirm:
-      if (hasAmounts()) {
-        display.showSaveConfirm(name_);
-      } else {
-        display.showNothingToSave();
-      }
+    case Step::Finish:
+      display.showFinishMenu(name_, hasAmounts(), choice_);
       break;
   }
 }
@@ -145,4 +135,10 @@ bool DrinkEditor::hasAmounts() const {
     }
   }
   return false;
+}
+
+void DrinkEditor::trimName() {
+  while (nameLength_ > 0 && name_[nameLength_ - 1] == ' ') {
+    name_[--nameLength_] = '\0';
+  }
 }

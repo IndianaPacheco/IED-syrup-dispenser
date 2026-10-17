@@ -22,8 +22,8 @@
                      MENU          DONE / CANCELLED / ERROR --press--> MENU
 
     The last menu entry is "+ New drink":
-    MENU --press--> PROGRAM (name -> pump amounts -> save) --saved--> MENU
-                       stop goes back a step; from the name step, to MENU
+    MENU --press--> PROGRAM (name -> pump amounts -> finish) --saved--> MENU
+                       knob only: "Exit no save" returns to MENU
 
   IMPORTANT:
   1. Test with pump power disconnected first.
@@ -228,8 +228,8 @@ void onSelectPress() {
   }
 }
 
-// Stop pressed: abort dispensing, back out of the confirm screen,
-// or go back a step while programming a drink.
+// Stop pressed: abort dispensing or back out of the confirm screen.
+// The drink editor is knob-only, so stop does nothing there.
 void onStopPress() {
   if (state == State::Dispensing) {
     pumps.stopAll();
@@ -238,8 +238,6 @@ void onStopPress() {
     Serial.println("Dispensing cancelled.");
   } else if (state == State::Confirm) {
     goToMenu();
-  } else if (state == State::Program) {
-    handleEditorResult(editor.back());
   }
 }
 

@@ -67,18 +67,45 @@ void Display::showNewDrinkItem() {
   printLine(3, "Press to program");
 }
 
-void Display::showNameEntry(const char* name, const char* choice) {
-  // Name so far with an underscore as the cursor, e.g. "Mocha_".
-  char nameLine[LCD_COLUMNS + 1];
-  snprintf(nameLine, sizeof(nameLine), "%s_", name);
+void Display::showLetterPicker(const char* name, const char* letters,
+                               int selected) {
+  printNameLine(name);
 
-  char pickLine[LCD_COLUMNS + 1];
-  snprintf(pickLine, sizeof(pickLine), "Pick: %s", choice);
+  // Each letter takes two columns: the ">" marker spot, then the
+  // letter. That fits 10 per row:
+  //   " a b c d e f g h i j"
+  //   " k l m n o p q r s t"
+  //   " u v w x y z _ more"
+  const int perRow = LCD_COLUMNS / 2;
+  const int count = strlen(letters);
 
-  printLine(0, "Name your drink:");
-  printLine(1, nameLine);
-  printLine(2, pickLine);
-  printLine(3, "Press=add Stop=exit");
+  for (int row = 1; row < LCD_ROWS; row++) {
+    char line[LCD_COLUMNS + 1];
+    int length = 0;
+
+    for (int col = 0; col < perRow; col++) {
+      int i = (row - 1) * perRow + col;
+      if (i >= count) {
+        break;
+      }
+      line[length++] = (i == selected) ? '>' : ' ';
+      line[length++] = (letters[i] == ' ') ? '_' : letters[i];
+    }
+    line[length] = '\0';
+
+    // Hint that turning further leads to Delete / Finish / Exit.
+    if (row == LCD_ROWS - 1) {
+      snprintf(line + length, sizeof(line) - length, " more");
+    }
+    printLine(row, line);
+  }
+}
+
+void Display::showNameCommands(const char* name, int selected) {
+  printNameLine(name);
+  printOption(1, "Delete letter", selected == 0);
+  printOption(2, "Finish name",   selected == 1);
+  printOption(3, "Exit no save",  selected == 2);
 }
 
 void Display::showAmountEntry(int pump, float amountMl) {
@@ -91,20 +118,15 @@ void Display::showAmountEntry(int pump, float amountMl) {
   printLine(0, top);
   printLine(1, amount);
   printLine(2, "");
-  printLine(3, "Press=next Stop=back");
+  printLine(3, "Turn=mL Press=next");
 }
 
-void Display::showSaveConfirm(const char* name) {
-  printLine(0, "Save this drink?");
-  printWrapped(1, name);
-  printLine(3, "Press=save Stop=back");
-}
-
-void Display::showNothingToSave() {
-  printLine(0, "All pumps are 0 mL");
-  printLine(1, "Nothing to save");
-  printLine(2, "");
-  printLine(3, "Stop to go back");
+void Display::showFinishMenu(const char* name, bool canSave, int selected) {
+  // An all-zero drink can't be saved, so say why on top.
+  printLine(0, canSave ? name : "All pumps are 0 mL");
+  printOption(1, "Save drink",   selected == 0);
+  printOption(2, "Edit drink",   selected == 1);
+  printOption(3, "Exit no save", selected == 2);
 }
 
 void Display::showError(const char* message, const char* hint) {
@@ -132,4 +154,22 @@ void Display::printWrapped(int row, const char* text) {
     rest = text + LCD_COLUMNS;
   }
   printLine(row + 1, rest);
+}
+
+void Display::printNameLine(const char* name) {
+  // Long names scroll: show only the end, so the newest letter
+  // stays in view. Room is what's left after "Name:" and the '_'.
+  const int room = LCD_COLUMNS - 6;
+  int length = strlen(name);
+  const char* tail = (length > room) ? name + length - room : name;
+
+  char line[LCD_COLUMNS + 1];
+  snprintf(line, sizeof(line), "Name:%s_", tail);
+  printLine(0, line);
+}
+
+void Display::printOption(int row, const char* text, bool selected) {
+  char line[LCD_COLUMNS + 1];
+  snprintf(line, sizeof(line), "%c%s", selected ? '>' : ' ', text);
+  printLine(row, line);
 }

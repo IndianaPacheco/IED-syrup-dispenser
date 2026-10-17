@@ -89,13 +89,20 @@ The eight numbers are mL for pumps 1–8.
 
 ### Programming a drink on the machine
 
-Scroll past the last drink to **+ New drink** and press the knob.
+Scroll past the last drink to **+ New drink** and press the knob. Programming uses only the knob: turn to move the `>` marker, press to pick.
 
-1. **Name**: turn to pick a character, then press to add it. Pick `[Delete]` to erase the last character, or `[Done]` when you're finished (up to 15 characters).
+1. **Name**: the screen shows the alphabet `a`–`z` and a space (drawn as `_`), with `>` on the selected letter. Press to add it. Turn past the last letter for **Delete letter**, **Finish name** and **Exit no save**. The first letter of each word is capitalized automatically. Names can be up to 39 characters; trailing spaces are dropped.
+
+   ```
+   Name:Mocha_
+    a b c d e f g h i j
+    k l m n o p q r s t
+    u v w x y z>_ more
+   ```
 2. **Amounts**: for each pump 1–8, turn to set the mL, then press to go to the next pump. Each click is 0.5 mL, and spinning fast moves 2 mL per click.
-3. **Save**: press to save. The drink is added to the end of `/recipes.jsonl` with the next free `id`, and the menu jumps to it.
+3. **Finish**: pick **Save drink**, **Edit drink** (back to the name with your amounts kept), or **Exit no save**. A saved drink is added to the end of `/recipes.jsonl` with the next free `id`, and the menu jumps to it. A drink with every pump at 0 mL can't be saved.
 
-The stop button goes back one step. On the name step it cancels and returns to the menu. If the card has no `recipes.jsonl` yet, the menu shows only **+ New drink**, and saving creates the file.
+The stop button does nothing while programming. If the card has no `recipes.jsonl` yet, the menu shows only **+ New drink**, and saving creates the file.
 
 Drinks can't be edited or deleted on the machine yet. To change one, take out the SD card and edit `/recipes.jsonl` on a computer. Keep one drink per line, and give each drink a unique `id`.
 
