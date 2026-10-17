@@ -15,11 +15,17 @@
     SyrupDispenser.ino  (this file) ties them together
 
   How it works (state machine):
-    MENU --press--> CONFIRM --press--> DISPENSING --finishes--> DONE
+    Turning the knob in MENU only browses drinks. Pressing opens
+    OPTIONS, where a ">" marks Pour / Edit / Delete / Back.
+
+    MENU --press--> OPTIONS --Pour--> DISPENSING --finishes--> DONE
                        |                    |
-                     stop                 stop --> CANCELLED
+                  Back or stop            stop --> CANCELLED
                        v
                      MENU          DONE / CANCELLED / ERROR --press--> MENU
+
+    OPTIONS --Edit--> PROGRAM (drink filled in) --saved--> MENU
+    OPTIONS --Delete--> DELETE CONFIRM --Yes--> MENU (drink removed)
 
     The last menu entry is "+ New drink":
     MENU --press--> PROGRAM (name -> pump amounts -> finish) --saved--> MENU
@@ -61,18 +67,24 @@ DebouncedButton stopButton(STOP_BUTTON_PIN, INPUT_PULLUP);
 
 enum class State {
   Menu,        // scrolling through recipes
-  Confirm,     // recipe chosen, waiting for a second press
-  Dispensing,  // pumps running
-  Done,        // drink finished
-  Cancelled,   // stopped by the stop button
-  Program,     // creating a new drink in the DrinkEditor
-  Error,       // problem with one recipe; press to return to menu
-  Fatal        // startup failed (no SD card); needs reset
+  Options,        // recipe chosen: Pour / Edit / Delete / Back
+  DeleteConfirm,  // "Delete this drink?" No / Yes
+  Dispensing,     // pumps running
+  Done,           // drink finished
+  Cancelled,      // stopped by the stop button
+  Program,        // creating or editing a drink in the DrinkEditor
+  Error,          // problem with one recipe; press to return to menu
+  Fatal           // startup failed (no SD card); needs reset
 };
+
+// Entries on the OPTIONS screen, in knob order.
+enum Option { OPTION_POUR, OPTION_EDIT, OPTION_DELETE, OPTION_BACK, OPTION_COUNT };
 
 State state = State::Menu;
 int selectedRecipe = 0;      // index into the menu; == recipes.count()
                              // means the "+ New drink" entry
+int optionChoice = 0;        // where the ">" is on OPTIONS / DELETE CONFIRM
+int editingRecipe = -1;      // recipe open in the editor; -1 = new drink
 int shownActivePumps = -1;   // last pump count drawn on the LCD
 
 // ============================================================
@@ -98,20 +110,68 @@ void goToMenu() {
   }
 }
 
+void showOptions() {
+  state = State::Options;
+  optionChoice = OPTION_POUR;
+  display.showDrinkOptions(recipes.name(selectedRecipe), optionChoice);
+}
+
+void showDeleteConfirm() {
+  state = State::DeleteConfirm;
+  optionChoice = 0;  // "No", so a stray press can't delete
+  display.showDeleteConfirm(recipes.name(selectedRecipe), optionChoice);
+}
+
 void startProgramming() {
   state = State::Program;
+  editingRecipe = -1;
   editor.start();
   editor.draw(display);
 }
 
-void saveProgrammedDrink() {
-  if (!recipes.addRecipe(editor.name(), editor.amounts())) {
-    showRecipeError("Save failed");
+void startEditing() {
+  float amountsMl[PUMP_COUNT];
+  if (!recipes.loadAmounts(selectedRecipe, amountsMl)) {
+    showRecipeError("Bad recipe data");
     return;
   }
 
-  // Show the new drink, which is now the last recipe.
-  selectedRecipe = recipes.count() - 1;
+  state = State::Program;
+  editingRecipe = selectedRecipe;
+  editor.start(recipes.name(selectedRecipe), amountsMl);
+  editor.draw(display);
+}
+
+void saveProgrammedDrink() {
+  if (editingRecipe >= 0) {
+    // An edited drink keeps its place in the menu.
+    if (!recipes.replaceRecipe(editingRecipe, editor.name(), editor.amounts())) {
+      showRecipeError("Save failed");
+      return;
+    }
+    selectedRecipe = editingRecipe;
+  } else {
+    if (!recipes.addRecipe(editor.name(), editor.amounts())) {
+      showRecipeError("Save failed");
+      return;
+    }
+    // Show the new drink, which is now the last recipe.
+    selectedRecipe = recipes.count() - 1;
+  }
+  goToMenu();
+}
+
+void deleteSelectedDrink() {
+  if (!recipes.deleteRecipe(selectedRecipe)) {
+    showRecipeError("Delete failed");
+    return;
+  }
+
+  // Stay on the drink that moved into this spot (or the one before,
+  // if the last drink was deleted).
+  if (selectedRecipe >= recipes.count() && recipes.count() > 0) {
+    selectedRecipe = recipes.count() - 1;
+  }
   goToMenu();
 }
 
@@ -178,22 +238,35 @@ void startDispensing() {
 // INPUT HANDLERS
 // ============================================================
 
-// Knob turned: scroll the menu (wraps around at both ends),
-// or change the value being edited.
+// Knob turned: scroll the menu, move the ">" marker, or change the
+// value being edited. Everything wraps around at both ends.
 void onEncoderTurn(int step) {
-  if (state == State::Program) {
-    editor.turn(step);
-    editor.draw(display);
-    return;
-  }
+  switch (state) {
+    case State::Program:
+      editor.turn(step);
+      editor.draw(display);
+      break;
 
-  if (state != State::Menu) {
-    return;
-  }
+    case State::Menu: {
+      int count = menuLength();
+      selectedRecipe = (selectedRecipe + step + count) % count;
+      goToMenu();
+      break;
+    }
 
-  int count = menuLength();
-  selectedRecipe = (selectedRecipe + step + count) % count;
-  goToMenu();
+    case State::Options:
+      optionChoice = (optionChoice + step + OPTION_COUNT) % OPTION_COUNT;
+      display.showDrinkOptions(recipes.name(selectedRecipe), optionChoice);
+      break;
+
+    case State::DeleteConfirm:
+      optionChoice = (optionChoice + step + 2) % 2;
+      display.showDeleteConfirm(recipes.name(selectedRecipe), optionChoice);
+      break;
+
+    default:
+      break;
+  }
 }
 
 // Knob pressed: move forward through the menu flow.
@@ -203,17 +276,29 @@ void onSelectPress() {
       if (isNewDrinkSelected()) {
         startProgramming();
       } else {
-        state = State::Confirm;
-        display.showConfirm(recipes.name(selectedRecipe));
+        showOptions();
+      }
+      break;
+
+    case State::Options:
+      switch (optionChoice) {
+        case OPTION_POUR:   startDispensing();   break;
+        case OPTION_EDIT:   startEditing();      break;
+        case OPTION_DELETE: showDeleteConfirm(); break;
+        case OPTION_BACK:   goToMenu();          break;
+      }
+      break;
+
+    case State::DeleteConfirm:
+      if (optionChoice == 1) {  // "Yes"
+        deleteSelectedDrink();
+      } else {
+        showOptions();
       }
       break;
 
     case State::Program:
       handleEditorResult(editor.press());
-      break;
-
-    case State::Confirm:
-      startDispensing();
       break;
 
     case State::Done:
@@ -228,7 +313,7 @@ void onSelectPress() {
   }
 }
 
-// Stop pressed: abort dispensing or back out of the confirm screen.
+// Stop pressed: abort dispensing or back out of the options screens.
 // The drink editor is knob-only, so stop does nothing there.
 void onStopPress() {
   if (state == State::Dispensing) {
@@ -236,7 +321,7 @@ void onStopPress() {
     state = State::Cancelled;
     display.showCancelled();
     Serial.println("Dispensing cancelled.");
-  } else if (state == State::Confirm) {
+  } else if (state == State::Options || state == State::DeleteConfirm) {
     goToMenu();
   }
 }

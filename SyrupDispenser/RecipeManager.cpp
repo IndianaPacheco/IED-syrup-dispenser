@@ -107,18 +107,9 @@ bool RecipeManager::addRecipe(const char* name, const float amountsMl[PUMP_COUNT
     return false;
   }
 
-  // Build the line with ArduinoJson so the name is escaped properly.
-  JsonDocument doc;
-  doc["id"] = maxId_ + 1;
-  doc["name"] = name;
-  JsonArray amounts = doc["amounts_ml"].to<JsonArray>();
-  for (int i = 0; i < PUMP_COUNT; i++) {
-    amounts.add(amountsMl[i]);
-  }
-
   char line[MAX_JSON_LINE];
-  size_t length = serializeJson(doc, line, sizeof(line));
-  if (length == 0 || length >= sizeof(line) - 1) {
+  size_t length = buildLine(maxId_ + 1, name, amountsMl, line);
+  if (length == 0) {
     Serial.println("Cannot add recipe: line too long.");
     return false;
   }
@@ -158,6 +149,33 @@ bool RecipeManager::addRecipe(const char* name, const float amountsMl[PUMP_COUNT
   Serial.println(line);
 
   return buildIndex();
+}
+
+bool RecipeManager::replaceRecipe(int index, const char* name,
+                                  const float amountsMl[PUMP_COUNT]) {
+  if (index < 0 || index >= count_) {
+    return false;
+  }
+
+  char line[MAX_JSON_LINE];
+  if (buildLine(index_[index].id, name, amountsMl, line) == 0) {
+    Serial.println("Cannot replace recipe: line too long.");
+    return false;
+  }
+
+  Serial.print("Replacing recipe with: ");
+  Serial.println(line);
+  return rewriteRecipe(index, line);
+}
+
+bool RecipeManager::deleteRecipe(int index) {
+  if (index < 0 || index >= count_) {
+    return false;
+  }
+
+  Serial.print("Deleting recipe: ");
+  Serial.println(index_[index].name);
+  return rewriteRecipe(index, nullptr);
 }
 
 const char* RecipeManager::name(int index) const {
@@ -228,4 +246,78 @@ bool RecipeManager::readRecipeAt(uint32_t offset, JsonDocument& doc) const {
   }
 
   return !deserializeJson(doc, line);
+}
+
+size_t RecipeManager::buildLine(int id, const char* name,
+                                const float amountsMl[PUMP_COUNT],
+                                char line[MAX_JSON_LINE]) const {
+  // Build the line with ArduinoJson so the name is escaped properly.
+  JsonDocument doc;
+  doc["id"] = id;
+  doc["name"] = name;
+  JsonArray amounts = doc["amounts_ml"].to<JsonArray>();
+  for (int i = 0; i < PUMP_COUNT; i++) {
+    amounts.add(amountsMl[i]);
+  }
+
+  size_t length = serializeJson(doc, line, MAX_JSON_LINE);
+  if (length == 0 || length >= MAX_JSON_LINE - 1) {
+    return 0;
+  }
+  return length;
+}
+
+bool RecipeManager::rewriteRecipe(int index, const char* replacement) {
+  static constexpr const char* TEMP_FILE = "/recipes.tmp";
+
+  File source = SD.open(RECIPE_FILE, FILE_READ);
+  if (!source) {
+    Serial.println("Cannot rewrite recipes: file did not open.");
+    return false;
+  }
+
+  SD.remove(TEMP_FILE);  // leftover from an earlier failed rewrite
+  File temp = SD.open(TEMP_FILE, FILE_WRITE);
+  if (!temp) {
+    source.close();
+    Serial.println("Cannot rewrite recipes: temp file did not open.");
+    return false;
+  }
+
+  // Copy every line as-is (blank and invalid lines too), except the
+  // one that starts where recipe 'index' does.
+  uint32_t target = index_[index].fileOffset;
+  bool ok = true;
+  while (ok && source.available()) {
+    uint32_t offset = source.position();
+    String line = source.readStringUntil('\n');
+
+    if (offset == target) {
+      if (replacement != nullptr) {
+        ok = temp.print(replacement) == strlen(replacement) &&
+             temp.print('\n') == 1;
+      }
+    } else {
+      // readStringUntil() drops the '\n'; keep any '\r' as it was.
+      ok = temp.print(line) == line.length() && temp.print('\n') == 1;
+    }
+  }
+  source.close();
+  temp.close();
+
+  if (!ok) {
+    SD.remove(TEMP_FILE);
+    Serial.println("Cannot rewrite recipes: write failed (card full?).");
+    return false;
+  }
+
+  // Swap the new file in. The original is only removed once the
+  // full copy is safely on the card.
+  if (!SD.remove(RECIPE_FILE) || !SD.rename(TEMP_FILE, RECIPE_FILE)) {
+    Serial.print("Cannot rewrite recipes: rename failed. Data is in ");
+    Serial.println(TEMP_FILE);
+    return false;
+  }
+
+  return buildIndex();
 }

@@ -40,6 +40,14 @@ public:
   // the last one (index count() - 1). Returns false on any error.
   bool addRecipe(const char* name, const float amountsMl[PUMP_COUNT]);
 
+  // Overwrite recipe 'index' with a new name and amounts, keeping its
+  // id and its place in the file. Returns false on any error.
+  bool replaceRecipe(int index, const char* name,
+                     const float amountsMl[PUMP_COUNT]);
+
+  // Remove recipe 'index' from the file. Returns false on any error.
+  bool deleteRecipe(int index);
+
   // Display name of recipe 'index' (0-based).
   const char* name(int index) const;
 
@@ -58,6 +66,16 @@ private:
 
   // Read and parse the single line that starts at 'offset'.
   bool readRecipeAt(uint32_t offset, JsonDocument& doc) const;
+
+  // Write one recipe as a JSON line (no newline) into 'line'.
+  // Returns its length, or 0 if it doesn't fit.
+  size_t buildLine(int id, const char* name, const float amountsMl[PUMP_COUNT],
+                   char line[MAX_JSON_LINE]) const;
+
+  // Copy the recipe file to a temp file, swapping recipe 'index' for
+  // 'replacement' (or dropping it if replacement is nullptr), then
+  // put the temp file in place of the original and rebuild the index.
+  bool rewriteRecipe(int index, const char* replacement);
 
   IndexEntry index_[MAX_RECIPES];
   int count_ = 0;

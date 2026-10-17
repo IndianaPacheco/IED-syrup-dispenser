@@ -20,7 +20,11 @@ public:
 
   void showStartup();
   void showMenu(int index, int count, const char* recipeName);
-  void showConfirm(const char* recipeName);
+  // Pour / Edit / Delete / Back for the chosen drink (selected = 0..3).
+  void showDrinkOptions(const char* recipeName, int selected);
+
+  // No / Yes (selected = 0..1).
+  void showDeleteConfirm(const char* recipeName, int selected);
   void showDispensing(int activePumps);
   void showDone();
   void showCancelled();
@@ -59,6 +63,10 @@ private:
 
   // One menu option, with ">" in front if it is selected.
   void printOption(int row, const char* text, bool selected);
+
+  // Two options side by side on one row, e.g. ">Pour     Edit".
+  void printOptionPair(int row, const char* left, bool leftSelected,
+                       const char* right, bool rightSelected);
 
   LiquidCrystal_I2C lcd_;
 };

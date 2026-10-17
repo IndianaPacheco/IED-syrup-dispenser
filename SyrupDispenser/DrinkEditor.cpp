@@ -27,6 +27,18 @@ void DrinkEditor::start() {
   lastTurnMs_ = 0;
 }
 
+void DrinkEditor::start(const char* name, const float amountsMl[PUMP_COUNT]) {
+  start();
+
+  strncpy(name_, name, NAME_LIMIT);
+  name_[NAME_LIMIT] = '\0';
+  nameLength_ = strlen(name_);
+  for (int i = 0; i < PUMP_COUNT; i++) {
+    amountsMl_[i] = amountsMl[i];
+  }
+  choice_ = NAME_FINISH;
+}
+
 void DrinkEditor::turn(int step) {
   switch (step_) {
     case Step::Name:

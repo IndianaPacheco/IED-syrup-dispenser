@@ -31,6 +31,10 @@ public:
   // Clear everything and begin at the name step.
   void start();
 
+  // Begin at the name step with an existing drink filled in, and the
+  // marker on "Finish name" so pressing goes straight to the amounts.
+  void start(const char* name, const float amountsMl[PUMP_COUNT]);
+
   // Knob turned (+1 / -1).
   void turn(int step);
 

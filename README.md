@@ -87,6 +87,19 @@ One JSON object per line in `/recipes.jsonl` on a FAT32 microSD card:
 
 The eight numbers are mL for pumps 1–8.
 
+### Choosing a drink
+
+Turn the knob to browse drinks. When you press, an options screen opens with a `>` marker:
+
+```
+Vanilla Latte
+
+>Pour      Edit
+ Delete    Back
+```
+
+Turn to move the `>` and press to pick. **Pour** dispenses the drink. **Edit** opens it in the drink editor (below) with its name and amounts filled in, and saving overwrites it in place. **Delete** asks `No` / `Yes`, with `No` selected first. **Back** (or the stop button) returns to browsing.
+
 ### Programming a drink on the machine
 
 Scroll past the last drink to **+ New drink** and press the knob. Programming uses only the knob: turn to move the `>` marker, press to pick.
@@ -104,7 +117,7 @@ Scroll past the last drink to **+ New drink** and press the knob. Programming us
 
 The stop button does nothing while programming. If the card has no `recipes.jsonl` yet, the menu shows only **+ New drink**, and saving creates the file.
 
-Drinks can't be edited or deleted on the machine yet. To change one, take out the SD card and edit `/recipes.jsonl` on a computer. Keep one drink per line, and give each drink a unique `id`.
+When you edit a drink, the editor opens with `>` on **Finish name**, so pressing goes straight to the amounts. Edit and Delete rewrite `/recipes.jsonl` through a temporary `/recipes.tmp`, which replaces the original only after the full copy is written. You can still edit `/recipes.jsonl` on a computer. Keep one drink per line, and give each drink a unique `id`.
 
 ## Safety
 

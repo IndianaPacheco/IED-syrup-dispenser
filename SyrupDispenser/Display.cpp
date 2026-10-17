@@ -30,10 +30,16 @@ void Display::showMenu(int index, int count, const char* recipeName) {
   printLine(3, "Turn=browse Press=ok");
 }
 
-void Display::showConfirm(const char* recipeName) {
-  printLine(0, "Ready to pour:");
+void Display::showDrinkOptions(const char* recipeName, int selected) {
+  printWrapped(0, recipeName);
+  printOptionPair(2, "Pour",   selected == 0, "Edit", selected == 1);
+  printOptionPair(3, "Delete", selected == 2, "Back", selected == 3);
+}
+
+void Display::showDeleteConfirm(const char* recipeName, int selected) {
+  printLine(0, "Delete this drink?");
   printWrapped(1, recipeName);
-  printLine(3, "Press=pour Stop=back");
+  printOptionPair(3, "No", selected == 0, "Yes", selected == 1);
 }
 
 void Display::showDispensing(int activePumps) {
@@ -171,5 +177,15 @@ void Display::printNameLine(const char* name) {
 void Display::printOption(int row, const char* text, bool selected) {
   char line[LCD_COLUMNS + 1];
   snprintf(line, sizeof(line), "%c%s", selected ? '>' : ' ', text);
+  printLine(row, line);
+}
+
+void Display::printOptionPair(int row, const char* left, bool leftSelected,
+                              const char* right, bool rightSelected) {
+  // The right option starts halfway across the screen.
+  char line[LCD_COLUMNS + 1];
+  snprintf(line, sizeof(line), "%c%-*s%c%s",
+           leftSelected ? '>' : ' ', LCD_COLUMNS / 2 - 1, left,
+           rightSelected ? '>' : ' ', right);
   printLine(row, line);
 }
