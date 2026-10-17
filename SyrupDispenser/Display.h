@@ -34,8 +34,35 @@ public:
   // A drink ordered from the web page, waiting for the knob press.
   void showRemoteOrder(const char* recipeName);
 
-  // Last menu entry, after all the drinks.
+  // Menu entry after all the drinks.
   void showNewDrinkItem();
+
+  // Last menu entry.
+  void showSettingsItem();
+
+  // Settings screens (see SettingsMenu).
+
+  // A title, then a scrolling list with a ">" on 'selected'.
+  void showList(const char* title, const char* const items[], int count,
+                int selected);
+
+  // One line of text, e.g. "Scanning WiFi...".
+  void showMessage(const char* text);
+
+  // The Web address screen: network, address, PIN.
+  void showNetworkInfo(const char* network, const char* address,
+                       const char* pin);
+
+  // Typing text (see TextEntry): label and text on top, then the
+  // page's characters, then a ">" spot for the page switch showing
+  // 'nextPage'. selected == strlen(chars) marks the switch.
+  void showTextPicker(const char* label, const char* text, const char* chars,
+                      int selected, const char* nextPage);
+
+  // Delete letter / Done / Cancel (selected = 0..2). A non-empty
+  // warning replaces the text on the top row.
+  void showTextCommands(const char* label, const char* text, int selected,
+                        const char* warning);
 
   // Drink programming screens (see DrinkEditor). A ">" marks the
   // selected letter or option.
@@ -65,6 +92,10 @@ private:
 
   // "Name:" plus the end of the name and a '_' cursor, on row 0.
   void printNameLine(const char* name);
+
+  // The same for any label, e.g. "Pass:". markSpaces draws spaces
+  // as a visible mark, for passwords.
+  void printTextLine(const char* label, const char* text, bool markSpaces);
 
   // One menu option, with ">" in front if it is selected.
   void printOption(int row, const char* text, bool selected);

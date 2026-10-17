@@ -2,12 +2,21 @@
 
 #include <Wire.h>
 
+// Custom LCD character 1: a small bracket, so a space typed in a
+// password is visible. ('_' can't be used: it is a character too.)
+static constexpr char SPACE_GLYPH = '\x01';
+static uint8_t spaceGlyph[8] = {
+  0b00000, 0b00000, 0b00000, 0b00000,
+  0b00000, 0b10001, 0b11111, 0b00000
+};
+
 Display::Display() : lcd_(LCD_I2C_ADDRESS, LCD_COLUMNS, LCD_ROWS) {}
 
 void Display::begin() {
   Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
   lcd_.init();
   lcd_.backlight();
+  lcd_.createChar(SPACE_GLYPH, spaceGlyph);
 }
 
 void Display::showStartup() {
@@ -80,6 +89,94 @@ void Display::showNewDrinkItem() {
   printLine(1, "");
   printLine(2, "");
   printLine(3, "");
+}
+
+void Display::showSettingsItem() {
+  printLine(0, "Settings");
+  printLine(1, "WiFi, web PIN,");
+  printLine(2, "web address");
+  printLine(3, "");
+}
+
+void Display::showList(const char* title, const char* const items[],
+                       int count, int selected) {
+  printLine(0, title);
+
+  // Show three items at a time, keeping the selected one in view
+  // (in the middle, where possible).
+  const int rows = LCD_ROWS - 1;
+  int first = constrain(selected - 1, 0, max(count - rows, 0));
+  for (int row = 0; row < rows; row++) {
+    int i = first + row;
+    if (i < count) {
+      printOption(row + 1, items[i], i == selected);
+    } else {
+      printLine(row + 1, "");
+    }
+  }
+}
+
+void Display::showMessage(const char* text) {
+  printLine(0, text);
+  printLine(1, "");
+  printLine(2, "");
+  printLine(3, "");
+}
+
+void Display::showNetworkInfo(const char* network, const char* address,
+                              const char* pin) {
+  printLine(0, network);
+  printLine(1, address);
+  printLine(2, pin);
+  printLine(3, "");
+}
+
+void Display::showTextPicker(const char* label, const char* text,
+                             const char* chars, int selected,
+                             const char* nextPage) {
+  printTextLine(label, text, true);
+
+  // Two columns per character, as in showLetterPicker(). The page
+  // switch sits at the right end of the bottom row:
+  //   " a b c d e f g h i j"
+  //   " k l m n o p q r s t"
+  //   " u v w x y z    >ABC"
+  const int perRow = LCD_COLUMNS / 2;
+  const int count = strlen(chars);
+
+  for (int row = 1; row < LCD_ROWS; row++) {
+    char line[LCD_COLUMNS + 1];
+    int length = 0;
+
+    for (int col = 0; col < perRow; col++) {
+      int i = (row - 1) * perRow + col;
+      if (i >= count) {
+        break;
+      }
+      line[length++] = (i == selected) ? '>' : ' ';
+      line[length++] = (chars[i] == ' ') ? SPACE_GLYPH : chars[i];
+    }
+    line[length] = '\0';
+
+    if (row == LCD_ROWS - 1) {
+      snprintf(line + length, sizeof(line) - length, "%*c%s",
+               LCD_COLUMNS - 3 - length, selected == count ? '>' : ' ',
+               nextPage);
+    }
+    printLine(row, line);
+  }
+}
+
+void Display::showTextCommands(const char* label, const char* text,
+                               int selected, const char* warning) {
+  if (warning[0]) {
+    printLine(0, warning);
+  } else {
+    printTextLine(label, text, true);
+  }
+  printOption(1, "Delete letter", selected == 0);
+  printOption(2, "Done",          selected == 1);
+  printOption(3, "Cancel",        selected == 2);
 }
 
 void Display::showLetterPicker(const char* name, const char* letters,
@@ -172,14 +269,25 @@ void Display::printWrapped(int row, const char* text) {
 }
 
 void Display::printNameLine(const char* name) {
-  // Long names scroll: show only the end, so the newest letter
-  // stays in view. Room is what's left after "Name:" and the '_'.
-  const int room = LCD_COLUMNS - 6;
-  int length = strlen(name);
-  const char* tail = (length > room) ? name + length - room : name;
+  printTextLine("Name:", name, false);
+}
+
+void Display::printTextLine(const char* label, const char* text,
+                            bool markSpaces) {
+  // Long text scrolls: show only the end, so the newest letter
+  // stays in view. Room is what's left after the label and the '_'.
+  const int room = LCD_COLUMNS - strlen(label) - 1;
+  int length = strlen(text);
+  const char* tail = (length > room) ? text + length - room : text;
 
   char line[LCD_COLUMNS + 1];
-  snprintf(line, sizeof(line), "Name:%s_", tail);
+  int at = snprintf(line, sizeof(line), "%s", label);
+
+  for (const char* c = tail; *c && at < LCD_COLUMNS - 1; c++) {
+    line[at++] = (*c == ' ' && markSpaces) ? SPACE_GLYPH : *c;
+  }
+  line[at++] = '_';
+  line[at] = '\0';
   printLine(0, line);
 }
 

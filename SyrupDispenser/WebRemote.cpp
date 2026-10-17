@@ -1,6 +1,5 @@
 #include "WebRemote.h"
 #include "Config.h"
-#include "Secrets.h"
 #include "WebPage.h"
 
 #include <ESPmDNS.h>
@@ -20,54 +19,89 @@ static void appendJsonString(String& out, const char* text) {
   out += '"';
 }
 
-WebRemote::WebRemote(const RecipeManager& recipes)
-    : recipes_(recipes), server_(80) {}
+WebRemote::WebRemote(const RecipeManager& recipes,
+                     const NetworkSettings& settings)
+    : recipes_(recipes), settings_(settings), server_(80) {}
 
-bool WebRemote::begin(OrderHandler onOrder, StopHandler onStop,
-                      StatusHandler onStatus) {
-  onOrder_ = onOrder;
-  onStop_ = onStop;
-  onStatus_ = onStatus;
+bool WebRemote::begin(const RemoteHandlers& handlers) {
+  handlers_ = handlers;
 
-  bool connected;
-  if (strlen(WIFI_SSID) == 0) {
-    accessPoint_ = true;
-    connected = WiFi.softAP(AP_SSID, AP_PASSWORD);
-  } else {
-    WiFi.mode(WIFI_STA);
-    WiFi.setHostname(WEB_HOSTNAME);
-    WiFi.setAutoReconnect(true);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED &&
-           millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
-      delay(100);
-    }
-    connected = (WiFi.status() == WL_CONNECTED);
-  }
-
-  MDNS.begin(WEB_HOSTNAME);
+  bool connected = connect(true);
 
   server_.on("/",       HTTP_GET,  [this] { handlePage(); });
   server_.on("/drinks", HTTP_GET,  [this] { handleDrinks(); });
   server_.on("/status", HTTP_GET,  [this] { handleStatus(); });
   server_.on("/order",  HTTP_POST, [this] { handleOrder(); });
   server_.on("/stop",   HTTP_POST, [this] { handleStop(); });
+  server_.on("/recipe", HTTP_GET,  [this] { handleRecipe(); });
+  server_.on("/save",   HTTP_POST, [this] { handleSave(); });
+  server_.on("/delete", HTTP_POST, [this] { handleDelete(); });
   server_.onNotFound([this] { server_.send(404, "text/plain", "Not found"); });
-  server_.begin();
-
   return connected;
 }
 
+void WebRemote::reconnect() {
+  connect(false);
+}
+
+bool WebRemote::connect(bool wait) {
+  // Start clean: drop any network we were on or were hosting.
+  MDNS.end();
+  WiFi.disconnect(true);
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  announced_ = false;
+
+  switch (settings_.mode) {
+    case WifiMode::Off:
+      Serial.println("WiFi is off (turn it on in Settings).");
+      return false;
+
+    case WifiMode::Own: {
+      // An empty password makes an open network; the PIN still
+      // guards the page.
+      const char* password = settings_.apPassword[0] ? settings_.apPassword : nullptr;
+      WiFi.mode(WIFI_AP);
+      if (!WiFi.softAP(AP_SSID, password)) {
+        Serial.println("Could not start our own WiFi network.");
+        return false;
+      }
+      MDNS.begin(WEB_HOSTNAME);
+      return true;
+    }
+
+    case WifiMode::Join:
+      break;
+  }
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(WEB_HOSTNAME);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(settings_.ssid, settings_.password);
+  MDNS.begin(WEB_HOSTNAME);
+
+  if (wait) {
+    uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
+      delay(100);
+    }
+  }
+  return WiFi.status() == WL_CONNECTED;
+}
+
 String WebRemote::address() const {
-  if (accessPoint_) {
-    return WiFi.softAPIP().toString();
+  switch (settings_.mode) {
+    case WifiMode::Own:
+      return WiFi.softAPIP().toString();
+    case WifiMode::Join:
+      if (WiFi.status() == WL_CONNECTED) {
+        return WiFi.localIP().toString();
+      }
+      return "";
+    default:
+      return "";
   }
-  if (WiFi.status() != WL_CONNECTED) {
-    return "";
-  }
-  return WiFi.localIP().toString();
 }
 
 void WebRemote::poll() {
@@ -81,9 +115,17 @@ void WebRemote::poll() {
     Serial.print("/  or  http://");
     Serial.print(WEB_HOSTNAME);
     Serial.println(".local/");
+
+    // The server can only start once there is a network.
+    if (!serverStarted_) {
+      server_.begin();
+      serverStarted_ = true;
+    }
   }
 
-  server_.handleClient();
+  if (serverStarted_) {
+    server_.handleClient();
+  }
 }
 
 void WebRemote::handlePage() {
@@ -116,7 +158,7 @@ void WebRemote::handleDrinks() {
 }
 
 void WebRemote::handleStatus() {
-  RemoteStatus status = onStatus_();
+  RemoteStatus status = handlers_.status();
 
   String json = "{\"state\":";
   appendJsonString(json, status.state);
@@ -139,7 +181,7 @@ void WebRemote::handleOrder() {
   int index = server_.arg("index").toInt();
   String name = server_.arg("name");
 
-  switch (onOrder_(index, name.c_str())) {
+  switch (handlers_.order(index, name.c_str())) {
     case OrderResult::Accepted:
       server_.send(200, "text/plain", "Sent. Place a cup and press the knob.");
       break;
@@ -156,15 +198,125 @@ void WebRemote::handleStop() {
   if (!checkPin()) {
     return;
   }
-  if (onStop_()) {
+  if (handlers_.stop()) {
     server_.send(200, "text/plain", "Stopped.");
   } else {
     server_.send(200, "text/plain", "Nothing to stop.");
   }
 }
 
+// One drink's name and amounts, for the page's drink editor:
+// {"name": "Vanilla Latte", "amounts": [10, 0, 0, 0, 0, 0, 0, 0]}
+void WebRemote::handleRecipe() {
+  int index = server_.arg("index").toInt();
+  float amountsMl[PUMP_COUNT];
+  if (!server_.hasArg("index") || !recipes_.loadAmounts(index, amountsMl)) {
+    server_.send(404, "text/plain", "Drink not found. Reload the list.");
+    return;
+  }
+
+  String json = "{\"name\":";
+  appendJsonString(json, recipes_.name(index));
+  json += ",\"amounts\":[";
+  for (int i = 0; i < PUMP_COUNT; i++) {
+    if (i > 0) {
+      json += ',';
+    }
+    json += String(amountsMl[i], 1);
+  }
+  json += "]}";
+  server_.send(200, "application/json", json);
+}
+
+// Add or replace a drink. Expects index (-1 = new), old (the name
+// the page showed), name, and a0 .. a7 (mL for pumps 1 .. 8).
+void WebRemote::handleSave() {
+  if (!checkPin()) {
+    return;
+  }
+
+  // Same rules as the drink editor on the machine, plus printable
+  // ASCII only, since the LCD can't show anything else.
+  String name = server_.arg("name");
+  name.trim();
+  if (name.length() == 0 || name.length() > MAX_NAME_LENGTH - 1) {
+    String message = "Name must be 1 to " + String(MAX_NAME_LENGTH - 1) +
+                     " characters.";
+    server_.send(400, "text/plain", message);
+    return;
+  }
+  for (unsigned int i = 0; i < name.length(); i++) {
+    if (name[i] < 0x20 || name[i] > 0x7E) {
+      server_.send(400, "text/plain",
+                   "Name can only use plain letters, numbers, and symbols.");
+      return;
+    }
+  }
+
+  float amountsMl[PUMP_COUNT];
+  bool anyAmount = false;
+  for (int i = 0; i < PUMP_COUNT; i++) {
+    String value = server_.arg("a" + String(i));
+    value.trim();
+    float amount = value.length() ? value.toFloat() : 0;
+    if (!isfinite(amount) || amount < 0 || amount > MAX_ML_PER_PUMP) {
+      String message = "Pump amounts must be 0 to " +
+                       String(MAX_ML_PER_PUMP, 0) + " mL.";
+      server_.send(400, "text/plain", message);
+      return;
+    }
+    amountsMl[i] = amount;
+    anyAmount = anyAmount || amount > 0;
+  }
+  if (!anyAmount) {
+    server_.send(400, "text/plain", "At least one pump needs an amount.");
+    return;
+  }
+
+  int index = server_.hasArg("index") ? server_.arg("index").toInt() : -1;
+  String oldName = server_.arg("old");
+  sendEditResult(handlers_.save(index, oldName.c_str(), name.c_str(), amountsMl),
+                 "Saved.");
+}
+
+// Expects index and old (the name the page showed).
+void WebRemote::handleDelete() {
+  if (!checkPin()) {
+    return;
+  }
+  if (!server_.hasArg("index") || !server_.hasArg("old")) {
+    server_.send(400, "text/plain", "Bad request");
+    return;
+  }
+
+  int index = server_.arg("index").toInt();
+  String oldName = server_.arg("old");
+  sendEditResult(handlers_.remove(index, oldName.c_str()), "Deleted.");
+}
+
+void WebRemote::sendEditResult(EditResult result, const char* doneMessage) {
+  switch (result) {
+    case EditResult::Done:
+      server_.send(200, "text/plain", doneMessage);
+      break;
+    case EditResult::Busy:
+      server_.send(409, "text/plain",
+                   "Machine is in use. Try again when it is on the menu.");
+      break;
+    case EditResult::Changed:
+      server_.send(409, "text/plain", "Drink list changed. Reloaded, try again.");
+      break;
+    case EditResult::Full:
+      server_.send(409, "text/plain", "No room for more drinks.");
+      break;
+    case EditResult::Failed:
+      server_.send(500, "text/plain", "SD card error. Nothing was changed.");
+      break;
+  }
+}
+
 bool WebRemote::checkPin() {
-  if (server_.arg("pin") == REMOTE_PIN) {
+  if (server_.arg("pin") == settings_.pin) {
     return true;
   }
   server_.send(401, "text/plain", "Wrong PIN.");

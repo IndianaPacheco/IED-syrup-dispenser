@@ -100,7 +100,14 @@ constexpr float    EDIT_FAST_MULTIPLIER = 4.0f;
 // ============================================================
 // BARISTA WEB PAGE (WebRemote)
 // ============================================================
-// WiFi name, password, and PIN are in Secrets.h.
+// The WiFi network, its password, and the web PIN are NOT here:
+// they are set on the machine (Settings menu) and saved on the SD
+// card in this file, so they never end up on GitHub.
+constexpr const char* SETTINGS_FILE = "/settings.json";
+
+// Name of the network the dispenser makes in "Own network" mode.
+// Join it from the register, then open http://192.168.4.1/
+constexpr const char* AP_SSID = "SyrupDispenser";
 
 // Also reachable at http://syrup.local/ on devices that support it.
 constexpr const char* WEB_HOSTNAME = "syrup";

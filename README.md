@@ -12,6 +12,10 @@ SyrupDispenser/          Arduino sketch (open SyrupDispenser.ino)
   Display.*              LCD screens
   Input.*                debounced buttons + rotary encoder
   DrinkEditor.*          programming new drinks with the knob
+  WebRemote.*, WebPage.h WiFi + the barista web page
+  Settings.*             WiFi details + web PIN, saved on the SD card
+  SettingsMenu.*         the Settings menu on the machine
+  TextEntry.*            typing passwords with the knob
 sd_card/recipes.jsonl    example recipe file (copy to the SD card root)
 HardwareTests/           standalone sketches to check each part
   LcdTest/               I2C scan, backlight, pixels, counter
@@ -118,6 +122,34 @@ Scroll past the last drink to **+ New drink** and press the knob. Programming us
 The stop button does nothing while programming. If the card has no `recipes.jsonl` yet, the menu shows only **+ New drink**, and saving creates the file.
 
 When you edit a drink, the editor opens with `>` on **Finish name**, so pressing goes straight to the amounts. Edit and Delete rewrite `/recipes.jsonl` through a temporary `/recipes.tmp`, which replaces the original only after the full copy is written. You can still edit `/recipes.jsonl` on a computer. Keep one drink per line, and give each drink a unique `id`.
+
+## Barista web page
+
+A barista can order drinks from the register, a tablet or a phone on the same WiFi. The page lists the drinks, shows what the machine is doing, and has a **STOP** button. A web order only shows on the LCD (`Web order: ... Cup in, press knob`). Nothing pours until someone at the machine presses the knob. Orders are refused while someone is using the knob or a drink is pouring.
+
+The **Drinks** tab manages the drink list from the browser. Tap **+ New drink**, or tap a drink to edit it. You can change the name and the mL for each of the eight pumps, then **Save**. **Delete** asks you to confirm first. Saving and deleting need the PIN. They follow the same rules as the machine: a name of 1–39 plain characters, 0–100 mL per pump, and at least one pump above 0. They're only allowed while nobody is using the knob and nothing is pouring, since rewriting the recipe file mid-pour could throw off pump timing. If the list changed since the page loaded (someone edited a drink on the machine or in another browser), the page reloads the list instead of changing the wrong drink.
+
+### Settings (WiFi and PIN)
+
+WiFi starts **off**. Set it up on the machine: scroll to the last menu entry, **Settings**, and press. The menu is knob-only with no PIN, because customers can't reach the machine.
+
+- **WiFi network**: scans for nearby networks. Pick one and type its password. The list ends with:
+  - **Hidden network**: type the network name, then the password.
+  - **Own network**: the dispenser makes its own network, `SyrupDispenser`. Join it from the register and open `http://192.168.4.1/`. Use this on school WiFi, which usually blocks devices from reaching each other. Set a password of 8+ characters, or leave it empty for an open network (the PIN still guards the page).
+  - **WiFi off**.
+- **Web PIN**: what the page asks for before sending orders (default `1234`).
+- **Web address**: the address to open on the register, plus the network and PIN. It updates when WiFi connects.
+
+Typing a password works like typing a drink name, but with four pages of characters: `abc`, `ABC`, `123` (digits, space and common symbols) and `#$%`. After the last character on a page is the page switch (bottom right, shows the next page), then **Delete letter**, **Done** and **Cancel**. A space shows as a small bracket.
+
+```
+Pass:Cafe2_
+ a b c d e f g h i j
+ k l m n o p q r s t
+ u v w x y z    >ABC
+```
+
+The settings are saved to `/settings.json` on the SD card, **in plain text**. They are never in the code, so they can't end up on GitHub. Don't copy that file into this repo; `sd_card/settings.json` is in `.gitignore` in case you do. Anyone holding the SD card can read the WiFi password.
 
 ## Safety
 

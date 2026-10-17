@@ -12,5 +12,8 @@ build/
 Thumbs.db
 desktop.ini
 
-# WiFi password and web PIN (template: Secrets.example.h)
+# WiFi password and web PIN. They now live on the SD card
+# (settings.json); the old Secrets.h stays ignored in case it is
+# still around.
 SyrupDispenser/Secrets.h
+sd_card/settings.json

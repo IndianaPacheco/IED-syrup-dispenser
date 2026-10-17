@@ -14,8 +14,10 @@
     Input.*             debounced buttons + rotary encoder
     DrinkEditor.*       programming new drinks with the knob
     WebRemote.*         WiFi + the barista web page (WebPage.h)
-    Secrets.h           WiFi name/password and web PIN (not in git;
-                        copy Secrets.example.h to make it)
+    Settings.*          WiFi name/password and web PIN, saved on the
+                        SD card (never in the code or on GitHub)
+    SettingsMenu.*      the Settings menu for those, knob only
+    TextEntry.*         typing passwords with the knob
     SyrupDispenser.ino  (this file) ties them together
 
   How it works (state machine):
@@ -32,12 +34,17 @@
     OPTIONS --Edit--> PROGRAM (drink filled in) --saved--> MENU
     OPTIONS --Delete--> DELETE CONFIRM --Yes--> MENU (drink removed)
 
-    The last menu entry is "+ New drink":
+    After the drinks comes "+ New drink":
     MENU --press--> PROGRAM (name -> pump amounts -> finish) --saved--> MENU
                        knob only: "Exit no save" returns to MENU
 
-    Web orders are only taken while nobody is using the knob (MENU,
-    DONE, CANCELLED, ERROR). Nothing pours until someone at the machine
+    The last menu entry is "Settings" (WiFi network, web PIN, web
+    address), saved to the SD card:
+    MENU --press--> SETTINGS --Back--> MENU
+
+    Web orders and web drink changes (Drinks tab: add, edit, delete)
+    are only taken while nobody is using the knob (MENU, DONE,
+    CANCELLED, ERROR). Nothing pours until someone at the machine
     puts a cup down and presses the knob:
     web order --> REMOTE ORDER --press--> DISPENSING
                        |
@@ -61,6 +68,8 @@
 #include "Input.h"
 #include "PumpController.h"
 #include "RecipeManager.h"
+#include "Settings.h"
+#include "SettingsMenu.h"
 #include "WebRemote.h"
 
 // ============================================================
@@ -74,7 +83,9 @@ DrinkEditor     editor;
 RotaryEncoder   encoder(ENCODER_CLK_PIN, ENCODER_DT_PIN);
 DebouncedButton selectButton(ENCODER_SW_PIN, INPUT);  // KY-040 onboard pull-up
 DebouncedButton stopButton(STOP_BUTTON_PIN, INPUT_PULLUP);
-WebRemote       remote(recipes);
+NetworkSettings netSettings;  // loaded from the SD card in setup()
+WebRemote       remote(recipes, netSettings);
+SettingsMenu    settingsMenu(display, remote);
 
 // ============================================================
 // STATE
@@ -89,6 +100,7 @@ enum class State {
   Cancelled,      // stopped by the stop button
   Program,        // creating or editing a drink in the DrinkEditor
   RemoteOrder,    // web order shown; waiting for the knob press
+  Settings,       // in the SettingsMenu
   Error,          // problem with one recipe; press to return to menu
   Fatal           // startup failed (no SD card); needs reset
 };
@@ -97,8 +109,8 @@ enum class State {
 enum Option { OPTION_POUR, OPTION_EDIT, OPTION_DELETE, OPTION_BACK, OPTION_COUNT };
 
 State state = State::Menu;
-int selectedRecipe = 0;      // index into the menu; == recipes.count()
-                             // means the "+ New drink" entry
+int selectedRecipe = 0;      // index into the menu; past the drinks
+                             // come "+ New drink" and "Settings"
 int optionChoice = 0;        // where the ">" is in OPTIONS / DELETE CONFIRM
 int editingRecipe = -1;      // recipe open in the editor; -1 = new drink
 int shownActivePumps = -1;   // last pump count drawn on the LCD
@@ -107,18 +119,25 @@ int shownActivePumps = -1;   // last pump count drawn on the LCD
 // STATE TRANSITIONS
 // ============================================================
 
-// The menu lists every recipe, plus "+ New drink" while there is room.
+// The menu lists every recipe, "+ New drink" while there is room,
+// and "Settings".
 int menuLength() {
-  return recipes.count() + (recipes.isFull() ? 0 : 1);
+  return recipes.count() + (recipes.isFull() ? 0 : 1) + 1;
 }
 
 bool isNewDrinkSelected() {
-  return selectedRecipe == recipes.count();
+  return selectedRecipe == recipes.count() && !recipes.isFull();
+}
+
+bool isSettingsSelected() {
+  return selectedRecipe == menuLength() - 1;
 }
 
 // Draw the selected drink, with the ">" only while in OPTIONS.
 void drawMenu() {
-  if (isNewDrinkSelected()) {
+  if (isSettingsSelected()) {
+    display.showSettingsItem();
+  } else if (isNewDrinkSelected()) {
     display.showNewDrinkItem();
   } else {
     int marker = (state == State::Options) ? optionChoice : -1;
@@ -149,6 +168,31 @@ void startProgramming() {
   editingRecipe = -1;
   editor.start();
   editor.draw(display);
+}
+
+void openSettings() {
+  state = State::Settings;
+  settingsMenu.start(netSettings);
+  settingsMenu.draw();
+}
+
+void handleSettingsResult(SettingsMenu::Result result) {
+  switch (result) {
+    case SettingsMenu::Result::Open:
+      break;
+    case SettingsMenu::Result::Save:
+      netSettings = settingsMenu.settings();
+      if (!saveSettings(netSettings)) {
+        showRecipeError("Settings not saved");
+        return;
+      }
+      remote.reconnect();
+      break;
+    case SettingsMenu::Result::Exit:
+      goToMenu();
+      return;
+  }
+  settingsMenu.draw();
 }
 
 void startEditing() {
@@ -269,6 +313,11 @@ void onEncoderTurn(int step) {
       editor.draw(display);
       break;
 
+    case State::Settings:
+      settingsMenu.turn(step);
+      settingsMenu.draw();
+      break;
+
     case State::Menu: {
       int count = menuLength();
       selectedRecipe = (selectedRecipe + step + count) % count;
@@ -295,7 +344,9 @@ void onEncoderTurn(int step) {
 void onSelectPress() {
   switch (state) {
     case State::Menu:
-      if (isNewDrinkSelected()) {
+      if (isSettingsSelected()) {
+        openSettings();
+      } else if (isNewDrinkSelected()) {
         startProgramming();
       } else {
         showOptions();
@@ -325,6 +376,10 @@ void onSelectPress() {
 
     case State::RemoteOrder:
       startDispensing();
+      break;
+
+    case State::Settings:
+      handleSettingsResult(settingsMenu.press());
       break;
 
     case State::Done:
@@ -377,20 +432,40 @@ void updateDispensing() {
 // WEB PAGE HANDLERS (called from remote.poll())
 // ============================================================
 
+// True while nobody is using the knob and nothing is pouring, so
+// the web page may take over. Rewriting the recipe file can take
+// long enough to throw off a pour's timing, so drink changes wait
+// for this too.
+bool machineIsFree() {
+  return state == State::Menu || state == State::Done ||
+         state == State::Cancelled || state == State::Error;
+}
+
+// The page's list is stale if this drink was edited or deleted on
+// the machine (or another browser) after the page loaded.
+bool pageMatches(int index, const char* name) {
+  return index >= 0 && index < recipes.count() &&
+         strcmp(recipes.name(index), name) == 0;
+}
+
+// The drink list changed from the web. Keep the menu on a real
+// entry and redraw it if it is showing.
+void refreshMenu() {
+  if (selectedRecipe >= menuLength()) {
+    selectedRecipe = menuLength() - 1;
+  }
+  if (state == State::Menu) {
+    drawMenu();
+  }
+}
+
 // A drink ordered from the web page. It is only shown on the LCD;
 // someone at the machine still has to press the knob to pour.
 OrderResult onRemoteOrder(int index, const char* name) {
-  // Don't interrupt someone using the knob, or a drink in progress.
-  bool free = (state == State::Menu || state == State::Done ||
-               state == State::Cancelled || state == State::Error);
-  if (!free) {
+  if (!machineIsFree()) {
     return OrderResult::Busy;
   }
-
-  // The page's list is stale if this drink was edited or deleted
-  // on the machine after the page loaded.
-  if (index < 0 || index >= recipes.count() ||
-      strcmp(recipes.name(index), name) != 0) {
+  if (!pageMatches(index, name)) {
     return OrderResult::Changed;
   }
 
@@ -410,6 +485,57 @@ bool onRemoteStop() {
     return true;
   }
   return false;
+}
+
+// Add (index -1) or replace a drink from the page's Drinks tab.
+EditResult onRemoteSave(int index, const char* oldName, const char* name,
+                        const float amountsMl[PUMP_COUNT]) {
+  if (!machineIsFree()) {
+    return EditResult::Busy;
+  }
+
+  if (index < 0) {
+    if (recipes.isFull()) {
+      return EditResult::Full;
+    }
+    if (!recipes.addRecipe(name, amountsMl)) {
+      return EditResult::Failed;
+    }
+  } else {
+    if (!pageMatches(index, oldName)) {
+      return EditResult::Changed;
+    }
+    if (!recipes.replaceRecipe(index, name, amountsMl)) {
+      return EditResult::Failed;
+    }
+  }
+
+  Serial.print("Drink saved from the web: ");
+  Serial.println(name);
+  refreshMenu();
+  return EditResult::Done;
+}
+
+EditResult onRemoteDelete(int index, const char* oldName) {
+  if (!machineIsFree()) {
+    return EditResult::Busy;
+  }
+  if (!pageMatches(index, oldName)) {
+    return EditResult::Changed;
+  }
+
+  Serial.print("Drink deleted from the web: ");
+  Serial.println(oldName);
+  if (!recipes.deleteRecipe(index)) {
+    return EditResult::Failed;
+  }
+
+  // Stay on the same drink if the deleted one was before it.
+  if (index < selectedRecipe) {
+    selectedRecipe--;
+  }
+  refreshMenu();
+  return EditResult::Done;
 }
 
 RemoteStatus remoteStatus() {
@@ -443,11 +569,6 @@ void setup() {
   display.begin();
   display.showStartup();
 
-  // Before the SD card, so the page can still report a card failure.
-  remote.begin(onRemoteOrder, onRemoteStop, remoteStatus);
-  display.showWebAddress(remote.address().c_str());
-  delay(WEB_ADDRESS_SHOW_MS);  // long enough to read it
-
   if (!recipes.beginCard()) {
     fail("SD init failed");
     return;
@@ -457,6 +578,16 @@ void setup() {
   if (!recipes.buildIndex()) {
     fail("Can't read recipes");
     return;
+  }
+
+  // WiFi details are on the card. Without them WiFi stays off until
+  // set up in the Settings menu.
+  loadSettings(netSettings);
+  remote.begin({onRemoteOrder, onRemoteStop, remoteStatus,
+                onRemoteSave, onRemoteDelete});
+  if (netSettings.mode != WifiMode::Off) {
+    display.showWebAddress(remote.address().c_str());
+    delay(WEB_ADDRESS_SHOW_MS);  // long enough to read it
   }
 
   selectedRecipe = 0;
@@ -491,5 +622,10 @@ void loop() {
 
   if (state == State::Dispensing) {
     updateDispensing();
+  }
+
+  // The Web address screen updates itself once WiFi connects.
+  if (state == State::Settings && settingsMenu.needsRedraw()) {
+    settingsMenu.draw();
   }
 }
