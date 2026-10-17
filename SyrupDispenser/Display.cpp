@@ -17,21 +17,24 @@ void Display::showStartup() {
   printLine(3, "");
 }
 
-void Display::showMenu(int index, int count, const char* recipeName) {
-  // e.g. "Drink 3/120". Short enough to fit even at 1000/1000.
-  char header[LCD_COLUMNS + 1];
-  int length = snprintf(header, sizeof(header), "Drink %d/%d", index + 1, count);
-  if (length >= (int)sizeof(header)) {
-    Serial.println("Menu header truncated.");
-  }
-
-  printLine(0, header);
-  printWrapped(1, recipeName);
-  printLine(3, "Turn=browse Press=ok");
+void Display::showWebAddress(const char* address) {
+  printLine(2, address[0] ? "Web page at:" : "No WiFi: knob only");
+  printLine(3, address);
 }
 
-void Display::showDrinkOptions(const char* recipeName, int selected) {
-  printWrapped(0, recipeName);
+void Display::showMenu(int index, int count, const char* recipeName,
+                       int selected) {
+  // A name that fits on one row gets "Drink 3/120" under it; a
+  // longer one wraps onto that row instead.
+  if ((int)strlen(recipeName) > LCD_COLUMNS) {
+    printWrapped(0, recipeName);
+  } else {
+    char counter[LCD_COLUMNS + 1];
+    snprintf(counter, sizeof(counter), "Drink %d/%d", index + 1, count);
+    printLine(0, recipeName);
+    printLine(1, counter);
+  }
+
   printOptionPair(2, "Pour",   selected == 0, "Edit", selected == 1);
   printOptionPair(3, "Delete", selected == 2, "Back", selected == 3);
 }
@@ -49,28 +52,34 @@ void Display::showDispensing(int activePumps) {
   printLine(0, "Dispensing...");
   printLine(1, status);
   printLine(2, "");
-  printLine(3, "Stop to cancel");
+  printLine(3, "");
 }
 
 void Display::showDone() {
   printLine(0, "Drink complete");
   printLine(1, "Enjoy!");
   printLine(2, "");
-  printLine(3, "Press to return");
+  printLine(3, "");
 }
 
 void Display::showCancelled() {
   printLine(0, "DISPENSING STOPPED");
   printLine(1, "All pumps off");
   printLine(2, "");
-  printLine(3, "Press to return");
+  printLine(3, "");
+}
+
+void Display::showRemoteOrder(const char* recipeName) {
+  printLine(0, "Web order:");
+  printWrapped(1, recipeName);
+  printLine(3, "Cup in, press knob");
 }
 
 void Display::showNewDrinkItem() {
   printLine(0, "+ New drink");
-  printLine(1, "Program a recipe");
+  printLine(1, "");
   printLine(2, "");
-  printLine(3, "Press to program");
+  printLine(3, "");
 }
 
 void Display::showLetterPicker(const char* name, const char* letters,
@@ -124,7 +133,7 @@ void Display::showAmountEntry(int pump, float amountMl) {
   printLine(0, top);
   printLine(1, amount);
   printLine(2, "");
-  printLine(3, "Turn=mL Press=next");
+  printLine(3, "");
 }
 
 void Display::showFinishMenu(const char* name, bool canSave, int selected) {

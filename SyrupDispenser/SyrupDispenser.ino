@@ -2,7 +2,8 @@
   AUTOMATIC SYRUP DISPENSER
   Controller: ESP32 DevKit V1
   Storage:    SPI microSD card (recipes.jsonl)
-  Interface:  20x4 I2C LCD + KY-040 rotary encoder
+  Interface:  20x4 I2C LCD + KY-040 rotary encoder,
+              plus a barista web page over WiFi
   Outputs:    8 active-HIGH MOSFET pump drivers
 
   Files in this sketch:
@@ -12,11 +13,15 @@
     Display.*           everything shown on the LCD
     Input.*             debounced buttons + rotary encoder
     DrinkEditor.*       programming new drinks with the knob
+    WebRemote.*         WiFi + the barista web page (WebPage.h)
+    Secrets.h           WiFi name/password and web PIN (not in git;
+                        copy Secrets.example.h to make it)
     SyrupDispenser.ino  (this file) ties them together
 
   How it works (state machine):
-    Turning the knob in MENU only browses drinks. Pressing opens
-    OPTIONS, where a ">" marks Pour / Edit / Delete / Back.
+    Each drink in MENU is shown with Pour / Edit / Delete / Back under
+    it. Turning the knob browses drinks. Pressing enters OPTIONS on
+    the same screen: a ">" appears and turning moves it instead.
 
     MENU --press--> OPTIONS --Pour--> DISPENSING --finishes--> DONE
                        |                    |
@@ -31,6 +36,13 @@
     MENU --press--> PROGRAM (name -> pump amounts -> finish) --saved--> MENU
                        knob only: "Exit no save" returns to MENU
 
+    Web orders are only taken while nobody is using the knob (MENU,
+    DONE, CANCELLED, ERROR). Nothing pours until someone at the machine
+    puts a cup down and presses the knob:
+    web order --> REMOTE ORDER --press--> DISPENSING
+                       |
+                     stop (button or web page) --> CANCELLED
+
   IMPORTANT:
   1. Test with pump power disconnected first.
   2. Calibrate PUMP_ML_PER_SECOND in Config.h before real drinks.
@@ -40,6 +52,7 @@
   Libraries (Arduino IDE Library Manager):
     - LiquidCrystal I2C
     - ArduinoJson by Benoit Blanchon, version 7
+    (WiFi, WebServer, and ESPmDNS come with the ESP32 board package.)
 */
 
 #include "Config.h"
@@ -48,6 +61,7 @@
 #include "Input.h"
 #include "PumpController.h"
 #include "RecipeManager.h"
+#include "WebRemote.h"
 
 // ============================================================
 // MODULES
@@ -60,30 +74,32 @@ DrinkEditor     editor;
 RotaryEncoder   encoder(ENCODER_CLK_PIN, ENCODER_DT_PIN);
 DebouncedButton selectButton(ENCODER_SW_PIN, INPUT);  // KY-040 onboard pull-up
 DebouncedButton stopButton(STOP_BUTTON_PIN, INPUT_PULLUP);
+WebRemote       remote(recipes);
 
 // ============================================================
 // STATE
 // ============================================================
 
 enum class State {
-  Menu,        // scrolling through recipes
-  Options,        // recipe chosen: Pour / Edit / Delete / Back
+  Menu,           // scrolling through recipes (no ">" shown)
+  Options,        // ">" on Pour / Edit / Delete / Back
   DeleteConfirm,  // "Delete this drink?" No / Yes
   Dispensing,     // pumps running
   Done,           // drink finished
   Cancelled,      // stopped by the stop button
   Program,        // creating or editing a drink in the DrinkEditor
+  RemoteOrder,    // web order shown; waiting for the knob press
   Error,          // problem with one recipe; press to return to menu
   Fatal           // startup failed (no SD card); needs reset
 };
 
-// Entries on the OPTIONS screen, in knob order.
+// Options under each drink, in knob order.
 enum Option { OPTION_POUR, OPTION_EDIT, OPTION_DELETE, OPTION_BACK, OPTION_COUNT };
 
 State state = State::Menu;
 int selectedRecipe = 0;      // index into the menu; == recipes.count()
                              // means the "+ New drink" entry
-int optionChoice = 0;        // where the ">" is on OPTIONS / DELETE CONFIRM
+int optionChoice = 0;        // where the ">" is in OPTIONS / DELETE CONFIRM
 int editingRecipe = -1;      // recipe open in the editor; -1 = new drink
 int shownActivePumps = -1;   // last pump count drawn on the LCD
 
@@ -100,20 +116,26 @@ bool isNewDrinkSelected() {
   return selectedRecipe == recipes.count();
 }
 
-void goToMenu() {
-  state = State::Menu;
+// Draw the selected drink, with the ">" only while in OPTIONS.
+void drawMenu() {
   if (isNewDrinkSelected()) {
     display.showNewDrinkItem();
   } else {
+    int marker = (state == State::Options) ? optionChoice : -1;
     display.showMenu(selectedRecipe, recipes.count(),
-                     recipes.name(selectedRecipe));
+                     recipes.name(selectedRecipe), marker);
   }
+}
+
+void goToMenu() {
+  state = State::Menu;
+  drawMenu();
 }
 
 void showOptions() {
   state = State::Options;
   optionChoice = OPTION_POUR;
-  display.showDrinkOptions(recipes.name(selectedRecipe), optionChoice);
+  drawMenu();
 }
 
 void showDeleteConfirm() {
@@ -193,7 +215,7 @@ void handleEditorResult(DrinkEditor::Result result) {
 void showRecipeError(const char* message) {
   pumps.stopAll();
   state = State::Error;
-  display.showError(message, "Press to return");
+  display.showError(message);
   Serial.print("Recipe error: ");
   Serial.println(message);
 }
@@ -202,7 +224,7 @@ void showRecipeError(const char* message) {
 void fail(const char* message) {
   pumps.stopAll();
   state = State::Fatal;
-  display.showError(message, "Reset to retry");
+  display.showError(message);
   Serial.print("Fatal: ");
   Serial.println(message);
 }
@@ -256,7 +278,7 @@ void onEncoderTurn(int step) {
 
     case State::Options:
       optionChoice = (optionChoice + step + OPTION_COUNT) % OPTION_COUNT;
-      display.showDrinkOptions(recipes.name(selectedRecipe), optionChoice);
+      drawMenu();
       break;
 
     case State::DeleteConfirm:
@@ -301,6 +323,10 @@ void onSelectPress() {
       handleEditorResult(editor.press());
       break;
 
+    case State::RemoteOrder:
+      startDispensing();
+      break;
+
     case State::Done:
     case State::Cancelled:
     case State::Error:
@@ -316,14 +342,19 @@ void onSelectPress() {
 // Stop pressed: abort dispensing or back out of the options screens.
 // The drink editor is knob-only, so stop does nothing there.
 void onStopPress() {
-  if (state == State::Dispensing) {
-    pumps.stopAll();
-    state = State::Cancelled;
-    display.showCancelled();
-    Serial.println("Dispensing cancelled.");
+  if (state == State::Dispensing || state == State::RemoteOrder) {
+    cancelDrink();
   } else if (state == State::Options || state == State::DeleteConfirm) {
     goToMenu();
   }
+}
+
+// Stop the drink being poured, or the web order waiting to pour.
+void cancelDrink() {
+  pumps.stopAll();
+  state = State::Cancelled;
+  display.showCancelled();
+  Serial.println("Dispensing cancelled.");
 }
 
 // Called every loop while pumps are running.
@@ -339,6 +370,59 @@ void updateDispensing() {
   if (active != shownActivePumps) {
     shownActivePumps = active;
     display.showDispensing(active);
+  }
+}
+
+// ============================================================
+// WEB PAGE HANDLERS (called from remote.poll())
+// ============================================================
+
+// A drink ordered from the web page. It is only shown on the LCD;
+// someone at the machine still has to press the knob to pour.
+OrderResult onRemoteOrder(int index, const char* name) {
+  // Don't interrupt someone using the knob, or a drink in progress.
+  bool free = (state == State::Menu || state == State::Done ||
+               state == State::Cancelled || state == State::Error);
+  if (!free) {
+    return OrderResult::Busy;
+  }
+
+  // The page's list is stale if this drink was edited or deleted
+  // on the machine after the page loaded.
+  if (index < 0 || index >= recipes.count() ||
+      strcmp(recipes.name(index), name) != 0) {
+    return OrderResult::Changed;
+  }
+
+  selectedRecipe = index;
+  state = State::RemoteOrder;
+  display.showRemoteOrder(recipes.name(index));
+  Serial.print("Web order: ");
+  Serial.println(recipes.name(index));
+  return OrderResult::Accepted;
+}
+
+// Stop on the web page. Unlike the stop button, it can't back out
+// of the menus, so it can't disturb someone using the knob.
+bool onRemoteStop() {
+  if (state == State::Dispensing || state == State::RemoteOrder) {
+    cancelDrink();
+    return true;
+  }
+  return false;
+}
+
+RemoteStatus remoteStatus() {
+  const char* drink = recipes.name(selectedRecipe);
+  switch (state) {
+    case State::Menu:        return {"idle", ""};
+    case State::RemoteOrder: return {"waiting", drink};
+    case State::Dispensing:  return {"pouring", drink};
+    case State::Done:        return {"done", drink};
+    case State::Cancelled:   return {"cancelled", ""};
+    case State::Error:       return {"error", ""};
+    case State::Fatal:       return {"offline", ""};
+    default:                 return {"busy", ""};  // knob in use
   }
 }
 
@@ -359,6 +443,11 @@ void setup() {
   display.begin();
   display.showStartup();
 
+  // Before the SD card, so the page can still report a card failure.
+  remote.begin(onRemoteOrder, onRemoteStop, remoteStatus);
+  display.showWebAddress(remote.address().c_str());
+  delay(WEB_ADDRESS_SHOW_MS);  // long enough to read it
+
   if (!recipes.beginCard()) {
     fail("SD init failed");
     return;
@@ -376,6 +465,10 @@ void setup() {
 }
 
 void loop() {
+  // Answer the web page first. Its stop goes through the same
+  // cancelDrink() as the stop button.
+  remote.poll();
+
   // After a startup failure, do nothing but keep the pumps off.
   if (state == State::Fatal) {
     pumps.stopAll();

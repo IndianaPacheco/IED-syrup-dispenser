@@ -11,3 +11,6 @@ build/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# WiFi password and web PIN (template: Secrets.example.h)
+SyrupDispenser/Secrets.h

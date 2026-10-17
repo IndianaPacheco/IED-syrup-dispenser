@@ -96,3 +96,17 @@ constexpr float EDIT_ML_STEP = 0.5f;
 // EDIT_ML_STEP * EDIT_FAST_MULTIPLIER per click instead.
 constexpr uint32_t EDIT_FAST_TURN_MS    = 60;
 constexpr float    EDIT_FAST_MULTIPLIER = 4.0f;
+
+// ============================================================
+// BARISTA WEB PAGE (WebRemote)
+// ============================================================
+// WiFi name, password, and PIN are in Secrets.h.
+
+// Also reachable at http://syrup.local/ on devices that support it.
+constexpr const char* WEB_HOSTNAME = "syrup";
+
+// How long setup() waits for WiFi before carrying on without it.
+constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 10000;
+
+// How long the startup screen shows the web address.
+constexpr uint32_t WEB_ADDRESS_SHOW_MS = 3000;

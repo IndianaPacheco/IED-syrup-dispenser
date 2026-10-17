@@ -19,15 +19,20 @@ public:
   void begin();
 
   void showStartup();
-  void showMenu(int index, int count, const char* recipeName);
-  // Pour / Edit / Delete / Back for the chosen drink (selected = 0..3).
-  void showDrinkOptions(const char* recipeName, int selected);
-
+  // Where to find the barista web page, under the startup title.
+  // An empty address means WiFi didn't connect.
+  void showWebAddress(const char* address);
+  // A drink with Pour / Edit / Delete / Back under it. selected is
+  // the option with the ">" (0..3), or -1 for no marker (browsing).
+  void showMenu(int index, int count, const char* recipeName, int selected);
   // No / Yes (selected = 0..1).
   void showDeleteConfirm(const char* recipeName, int selected);
   void showDispensing(int activePumps);
   void showDone();
   void showCancelled();
+
+  // A drink ordered from the web page, waiting for the knob press.
+  void showRemoteOrder(const char* recipeName);
 
   // Last menu entry, after all the drinks.
   void showNewDrinkItem();
@@ -48,7 +53,7 @@ public:
   void showFinishMenu(const char* name, bool canSave, int selected);
 
   // Top row reads "ERROR", then the message, then an optional hint
-  // on the bottom row (e.g. "Press to return").
+  // on the bottom row.
   void showError(const char* message, const char* hint = "");
 
 private:

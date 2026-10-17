@@ -89,16 +89,16 @@ The eight numbers are mL for pumps 1–8.
 
 ### Choosing a drink
 
-Turn the knob to browse drinks. When you press, an options screen opens with a `>` marker:
+Each drink is shown with its options underneath. Turn the knob to browse drinks. Press, and a `>` appears on **Pour**; turning now moves the `>` between the options instead of changing drinks:
 
 ```
 Vanilla Latte
-
+Drink 1/3
 >Pour      Edit
  Delete    Back
 ```
 
-Turn to move the `>` and press to pick. **Pour** dispenses the drink. **Edit** opens it in the drink editor (below) with its name and amounts filled in, and saving overwrites it in place. **Delete** asks `No` / `Yes`, with `No` selected first. **Back** (or the stop button) returns to browsing.
+Press again to pick the marked option. **Pour** dispenses the drink. **Edit** opens it in the drink editor (below) with its name and amounts filled in, and saving overwrites it in place. **Delete** asks `No` / `Yes`, with `No` selected first. **Back** (or the stop button) hides the `>` and returns to browsing. The screens don't show button hints.
 
 ### Programming a drink on the machine
 
