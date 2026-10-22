@@ -5,9 +5,8 @@
 
   What it does:
     - At startup, prints the idle level of every input pin. All should
-      read HIGH. A LOW at idle usually means a missing pull-up resistor
-      (GPIO 34 and 35 rely on the KY-040's onboard 10 kOhm pull-ups,
-      so check that the module's + pin is wired to 3.3 V).
+      read HIGH (every pin uses its internal pull-up). A LOW at idle
+      usually means a short to GND or a miswired pin.
     - Prints the knob position every time it moves, and a message on
       every encoder press and stop-button press.
     - Type 'r' in Serial Monitor to print the raw pin levels again.
@@ -22,10 +21,10 @@
 */
 
 // Must match SyrupDispenser/Config.h
-constexpr int ENCODER_CLK_PIN = 33;
-constexpr int ENCODER_DT_PIN  = 34;
-constexpr int ENCODER_SW_PIN  = 35;
-constexpr int STOP_BUTTON_PIN = 4;
+constexpr int ENCODER_CLK_PIN = 17;
+constexpr int ENCODER_DT_PIN  = 16;
+constexpr int ENCODER_SW_PIN  = 4;
+constexpr int STOP_BUTTON_PIN = 15;
 constexpr uint32_t DEBOUNCE_MS = 35;
 
 // Same detection method as SyrupDispenser/Input.cpp, so what you see
@@ -100,8 +99,8 @@ void setup() {
   Serial.println("=== ENCODER + BUTTON TEST ===");
 
   pinMode(ENCODER_CLK_PIN, INPUT_PULLUP);
-  pinMode(ENCODER_DT_PIN, INPUT);   // input-only pin, KY-040 pull-up
-  pinMode(ENCODER_SW_PIN, INPUT);   // input-only pin, KY-040 pull-up
+  pinMode(ENCODER_DT_PIN, INPUT_PULLUP);
+  pinMode(ENCODER_SW_PIN, INPUT_PULLUP);
   pinMode(STOP_BUTTON_PIN, INPUT_PULLUP);
   delay(10);
 

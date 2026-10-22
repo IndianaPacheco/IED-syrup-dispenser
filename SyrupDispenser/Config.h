@@ -17,8 +17,18 @@
 constexpr int PUMP_COUNT = 8;
 
 // One active-HIGH MOSFET driver input per pump (pump 1 .. pump 8).
+//
+// These are the eight output pins in a row down the LEFT header of an
+// ESP32 DevKit (antenna up), top to bottom, so the pump traces run
+// straight out in order. Everything else is on the right header.
+//
+// GPIO 12 (pump 7) is a boot strapping pin: it must be LOW at reset or
+// the ESP32 won't boot. The pull-down resistor on each MOSFET gate
+// (10 kOhm gate to GND) takes care of this, so don't leave it out.
+// GPIO 14 (pump 6) twitches briefly at boot; the same pull-down keeps
+// the pump from blipping.
 constexpr int PUMP_PINS[PUMP_COUNT] = {
-  13, 14, 16, 17, 25, 26, 27, 32
+  32, 33, 25, 26, 27, 14, 12, 13
 };
 
 // Measured flow rate of each pump, in mL per second.
@@ -71,17 +81,22 @@ constexpr int LCD_SCL_PIN = 22;
 // USER INPUTS
 // ============================================================
 
-// GPIO 34 and 35 are input-only and have NO internal pull-ups.
-// The KY-040 module's onboard 10 kOhm pull-ups cover DT and SW,
-// so no extra resistors are needed. Power the module's + pin from
-// 3.3 V (not 5 V), or the pull-ups put 5 V on these pins.
-constexpr int ENCODER_CLK_PIN = 33;
-constexpr int ENCODER_DT_PIN  = 34;
-constexpr int ENCODER_SW_PIN  = 35;
+// Encoder and stop button sit together on the RIGHT header, below the
+// SD card pins. All four have internal pull-ups, so no resistors are
+// needed. Power the KY-040's + pin from 3.3 V (not 5 V), or its
+// onboard pull-ups put 5 V on these pins.
+//
+// GPIO 16 and 17 are NOT available on ESP32-WROVER modules (they go
+// to the PSRAM chip). Run HardwareTests/PsramTest to check your board.
+constexpr int ENCODER_CLK_PIN = 17;
+constexpr int ENCODER_DT_PIN  = 16;
+constexpr int ENCODER_SW_PIN  = 4;
 
 // Stop button wired between this pin and GND.
 // This is a SOFTWARE stop, not a safety-rated emergency stop.
-constexpr int STOP_BUTTON_PIN = 4;
+// (GPIO 15 is a strapping pin, but holding the button during reset
+// only hides the boot log, so it's harmless here.)
+constexpr int STOP_BUTTON_PIN = 15;
 
 constexpr uint32_t DEBOUNCE_MS = 35;
 

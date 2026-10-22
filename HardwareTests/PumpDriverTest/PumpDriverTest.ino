@@ -27,9 +27,9 @@
 // Must match SyrupDispenser/Config.h
 constexpr int PUMP_COUNT = 8;
 constexpr int PUMP_PINS[PUMP_COUNT] = {
-  13, 14, 16, 17, 25, 26, 27, 32
+  32, 33, 25, 26, 27, 14, 12, 13
 };
-constexpr int STOP_BUTTON_PIN = 4;
+constexpr int STOP_BUTTON_PIN = 15;
 
 constexpr uint32_t PULSE_MS       = 1000;
 constexpr uint32_t CALIBRATION_MS = 10000;

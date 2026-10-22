@@ -21,6 +21,7 @@ HardwareTests/           standalone sketches to check each part
   LcdTest/               I2C scan, backlight, pixels, counter
   SdCardTest/            mount, list, write/read, recipe file
   EncoderTest/           knob position, encoder button, stop button
+  PsramTest/             WROOM vs WROVER check (GPIO 16/17)
   PumpDriverTest/        run pumps from Serial Monitor + calibration
 ```
 
@@ -28,18 +29,44 @@ HardwareTests/           standalone sketches to check each part
 
 All pins are set in `SyrupDispenser/Config.h`.
 
+The pins are grouped for an easy PCB layout. With the DevKit's antenna pointing up, all eight pumps are in a row down the **left** header, and the SD card, LCD, encoder and stop button are all on the **right** header. Every pin used here can do PWM, so pump speed control can be added later without rewiring.
+
+```
+               left header        right header
+                   3V3  o          o  GND
+                    EN  o          o  23   SD MOSI
+                36 (VP) o          o  22   LCD SCL
+                39 (VN) o          o  TX
+                    34  o          o  RX
+                    35  o          o  21   LCD SDA
+       Pump 1       32  o          o  GND
+       Pump 2       33  o          o  19   SD MISO
+       Pump 3       25  o          o  18   SD SCK
+       Pump 4       26  o          o  5    SD CS
+       Pump 5       27  o          o  17   Encoder CLK
+       Pump 6       14  o          o  16   Encoder DT
+       Pump 7       12  o          o  4    Encoder SW
+                   GND  o          o  0
+       Pump 8       13  o          o  2
+                   ...  o          o  15   Stop button
+```
+
+(38-pin ESP32-DevKitC shown. The 30-pin DevKit V1 has the same pins in the same order, minus a few GND and flash pins.)
+
 ### Pumps (MOSFET driver inputs, active HIGH)
 
 | Pump | GPIO |
 |------|------|
-| 1    | 13   |
-| 2    | 14   |
-| 3    | 16   |
-| 4    | 17   |
-| 5    | 25   |
-| 6    | 26   |
-| 7    | 27   |
-| 8    | 32   |
+| 1    | 32   |
+| 2    | 33   |
+| 3    | 25   |
+| 4    | 26   |
+| 5    | 27   |
+| 6    | 14   |
+| 7    | 12   |
+| 8    | 13   |
+
+Every MOSFET gate needs a pull-down resistor (about 10 kOhm, gate to GND). It keeps the pumps off while the ESP32 boots, and GPIO 12 **must** be LOW at reset or the ESP32 will not boot.
 
 ### microSD card (SPI, VSPI bus)
 
@@ -61,20 +88,41 @@ All pins are set in `SyrupDispenser/Config.h`.
 
 | Signal          | GPIO | Notes                                          |
 |-----------------|------|------------------------------------------------|
-| Encoder CLK     | 33   | Internal pull-up                               |
-| Encoder DT      | 34   | Input-only: uses the KY-040's onboard pull-up  |
-| Encoder SW      | 35   | Input-only: uses the KY-040's onboard pull-up  |
-| Stop button     | 4    | Wired to GND, internal pull-up                 |
+| Encoder CLK     | 17   | Internal pull-up                               |
+| Encoder DT      | 16   | Internal pull-up                               |
+| Encoder SW      | 4    | Internal pull-up                               |
+| Stop button     | 15   | Wired to GND, internal pull-up                 |
 
 Buttons are active LOW (pressed = connected to GND).
 
-The KY-040 has 10 kΩ pull-ups (marked `103`) on CLK, DT and SW, so no extra resistors are needed. Power its **+** pin from **3.3 V**, not 5 V, or those pull-ups put 5 V on the ESP32 pins.
+All four pins use the ESP32's internal pull-ups, so no extra resistors are needed. Power the KY-040's **+** pin from **3.3 V**, not 5 V, or its onboard pull-ups put 5 V on the ESP32 pins.
+
+GPIO 16 and 17 don't exist on **ESP32-WROVER** modules (they're wired to the PSRAM chip). Run `HardwareTests/PsramTest` before making the PCB: it should report no PSRAM (a WROOM module).
 
 ## Hardware tests
 
 Each folder in `HardwareTests/` is its own sketch. Open its `.ino`, upload it, and open Serial Monitor at 115200 baud. Instructions and the pass criteria are at the top of each file.
 
-Test in this order: LCD, SD card, encoder, then pumps (with pump power disconnected first). The test sketches have their own copy of the pin numbers, so if you change `Config.h`, update the tests too.
+Test in this order: module check, LCD, SD card, encoder, then pumps (with pump power disconnected first).
+
+### Module check (WROOM vs WROVER)
+
+`HardwareTests/PsramTest` tells you which ESP32 module your board has. This matters because the encoder uses GPIO 16 and 17, which a **WROVER** module wires to its PSRAM chip, so those pins don't work there. Run it before building the PCB:
+
+1. Open `HardwareTests/PsramTest/PsramTest.ino`.
+2. If the **Tools** menu has a **PSRAM** option, set it to **Enabled**.
+3. Upload, open Serial Monitor at 115200 baud, and press the board's **EN/RST** button if nothing shows up.
+
+| Result | Module | What to do |
+|--------|--------|------------|
+| `PSRAM size: 0 bytes` | WROOM | Nothing. GPIO 16/17 are fine. |
+| `PSRAM size: 4194304` (or similar) | WROVER | Move the encoder CLK/DT off GPIO 16/17 in `Config.h` and the encoder test. |
+
+If the label on the module's metal shield is generic, this test is the reliable way to tell. A WROVER shield is also longer (about 31 mm vs 25 mm).
+
+### Other notes
+
+The test sketches have their own copy of the pin numbers, so if you change `Config.h`, update the tests too.
 
 ## Building
 
