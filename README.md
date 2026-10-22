@@ -36,15 +36,15 @@ The pins are grouped for an easy PCB layout. With the DevKit's antenna pointing 
                    3V3  o          o  GND
                     EN  o          o  23   SD MOSI
                 36 (VP) o          o  22   LCD SCL
-                39 (VN) o          o  TX
-                    34  o          o  RX
+                39 (VN) o          o  TX0  (GPIO 1, USB serial - keep free)
+                    34  o          o  RX0  (GPIO 3, USB serial - keep free)
                     35  o          o  21   LCD SDA
        Pump 1       32  o          o  GND
        Pump 2       33  o          o  19   SD MISO
        Pump 3       25  o          o  18   SD SCK
        Pump 4       26  o          o  5    SD CS
-       Pump 5       27  o          o  17   Encoder CLK
-       Pump 6       14  o          o  16   Encoder DT
+       Pump 5       27  o          o  17   Encoder CLK  (labeled TX2)
+       Pump 6       14  o          o  16   Encoder DT   (labeled RX2)
        Pump 7       12  o          o  4    Encoder SW
                    GND  o          o  0
        Pump 8       13  o          o  2
@@ -88,14 +88,16 @@ Every MOSFET gate needs a pull-down resistor (about 10 kOhm, gate to GND). It ke
 
 | Signal          | GPIO | Notes                                          |
 |-----------------|------|------------------------------------------------|
-| Encoder CLK     | 17   | Internal pull-up                               |
-| Encoder DT      | 16   | Internal pull-up                               |
+| Encoder CLK     | 17   | Labeled **TX2** on the board. Internal pull-up |
+| Encoder DT      | 16   | Labeled **RX2** on the board. Internal pull-up |
 | Encoder SW      | 4    | Internal pull-up                               |
 | Stop button     | 15   | Wired to GND, internal pull-up                 |
 
 Buttons are active LOW (pressed = connected to GND).
 
 All four pins use the ESP32's internal pull-ups, so no extra resistors are needed. Power the KY-040's **+** pin from **3.3 V**, not 5 V, or its onboard pull-ups put 5 V on the ESP32 pins.
+
+**Finding GPIO 16 and 17:** most DevKits label them by their serial-port names, **RX2** (GPIO 16) and **TX2** (GPIO 17), on the right header just below D5. Don't mix them up with **RX0 / TX0** near the top of the same header: those are GPIO 3 and 1, the USB serial pins, and must stay free for uploading and Serial Monitor.
 
 GPIO 16 and 17 don't exist on **ESP32-WROVER** modules (they're wired to the PSRAM chip). Run `HardwareTests/PsramTest` before making the PCB: it should report no PSRAM (a WROOM module).
 
