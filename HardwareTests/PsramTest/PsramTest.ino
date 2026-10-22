@@ -15,8 +15,10 @@
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+}
 
+// Repeats every 2 s so you see it even if Serial Monitor opens late.
+void loop() {
   uint32_t psram = ESP.getPsramSize();
   Serial.printf("PSRAM size: %u bytes\n", psram);
   if (psram == 0) {
@@ -24,6 +26,5 @@ void setup() {
   } else {
     Serial.println("PSRAM found -> WROVER module. Do NOT use GPIO 16/17 for the encoder.");
   }
+  delay(2000);
 }
-
-void loop() {}
