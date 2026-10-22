@@ -66,7 +66,26 @@ The pins are grouped for an easy PCB layout. With the DevKit's antenna pointing 
 | 7    | 12   |
 | 8    | 13   |
 
-Every MOSFET gate needs a pull-down resistor (about 10 kOhm, gate to GND). It keeps the pumps off while the ESP32 boots, and GPIO 12 **must** be LOW at reset or the ESP32 will not boot.
+### Pull-down resistors
+
+Put a **10 kOhm resistor from each pump's MOSFET gate to GND**. It goes on the PCB between the ESP32 pin and the MOSFET gate trace, then to GND.
+
+| Pump | GPIO | Pull-down | Why |
+|------|------|-----------|-----|
+| 1    | 32   | Yes | Keeps pump off while the ESP32 is off, booting, or flashing |
+| 2    | 33   | Yes | Same |
+| 3    | 25   | Yes | Same |
+| 4    | 26   | Yes | Same |
+| 5    | 27   | Yes | Same |
+| 6    | 14   | Yes | Same, and GPIO 14 can twitch briefly at boot |
+| 7    | 12   | **Required** | GPIO 12 must be LOW at reset or the ESP32 **will not boot** |
+| 8    | 13   | Yes | Same as pumps 1-5 |
+
+That's **8 resistors total**, one per pump. Without them, a gate floats whenever the ESP32 isn't actively driving it, and with pump power on, a pump can switch itself on.
+
+**No other pin gets a pull-down.** The encoder (GPIO 17, 16, 4) and stop button (GPIO 15) use the ESP32's internal pull-*ups*, and the SD card and LCD pins work as they are. A pull-down on GPIO 15 or GPIO 4 would read as a held button.
+
+If you use a MOSFET driver module that already has a gate pull-down on board, you don't need to add another one for that pump.
 
 ### microSD card (SPI, VSPI bus)
 
