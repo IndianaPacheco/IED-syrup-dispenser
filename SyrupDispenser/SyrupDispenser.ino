@@ -181,12 +181,15 @@ void handleSettingsResult(SettingsMenu::Result result) {
     case SettingsMenu::Result::Open:
       break;
     case SettingsMenu::Result::Save:
+    case SettingsMenu::Result::SaveSpeed:
       netSettings = settingsMenu.settings();
       if (!saveSettings(netSettings)) {
         showRecipeError("Settings not saved");
         return;
       }
-      remote.reconnect();
+      if (result == SettingsMenu::Result::Save) {
+        remote.reconnect();
+      }
       break;
     case SettingsMenu::Result::Exit:
       goToMenu();
@@ -281,7 +284,7 @@ void startDispensing() {
     return;
   }
 
-  switch (pumps.start(amountsMl)) {
+  switch (pumps.start(amountsMl, netSettings.pumpSpeed)) {
     case DispenseResult::Started:
       state = State::Dispensing;
       shownActivePumps = -1;  // force the first screen update
@@ -296,6 +299,12 @@ void startDispensing() {
       break;
     case DispenseResult::DoseTooLong:
       showRecipeError("Dose too long");
+      break;
+    case DispenseResult::SpeedZero:
+      showRecipeError("Pump speed is 0%");
+      break;
+    case DispenseResult::DriverError:
+      showRecipeError("Pump driver error");
       break;
   }
 }

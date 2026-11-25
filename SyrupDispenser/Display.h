@@ -53,6 +53,9 @@ public:
   void showNetworkInfo(const char* network, const char* address,
                        const char* pin);
 
+  // Setting the pump speed, 0-100%.
+  void showSpeedEntry(int percent);
+
   // Typing text (see TextEntry): label and text on top, then the
   // page's characters, then a ">" spot for the page switch showing
   // 'nextPage'. selected == strlen(chars) marks the switch.

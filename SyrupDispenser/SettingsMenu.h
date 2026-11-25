@@ -10,6 +10,7 @@
                    WiFi off.
     Web PIN        the PIN the barista page asks for
     Web address    what to open on the register, and the WiFi status
+    Pump speed     0-100% of the pumps' maximum voltage
     Back
 
   Like DrinkEditor, this module only collects the changes: when it
@@ -28,9 +29,10 @@
 class SettingsMenu {
 public:
   enum class Result {
-    Open,  // still in the menu; nothing to do
-    Save,  // settings() changed: save it and reconnect, stay open
-    Exit   // back to the main menu
+    Open,       // still in the menu; nothing to do
+    Save,       // settings() changed: save it and reconnect, stay open
+    SaveSpeed,  // pump speed changed: save it, no need to reconnect
+    Exit        // back to the main menu
   };
 
   SettingsMenu(Display& display, const WebRemote& remote);
@@ -49,7 +51,7 @@ public:
   const NetworkSettings& settings() const { return settings_; }
 
 private:
-  enum class Step { Top, Networks, HiddenName, Password, Pin, Address };
+  enum class Step { Top, Networks, HiddenName, Password, Pin, Address, Speed };
 
   // Scan for networks and open the network list. Takes a few seconds.
   void scan();
@@ -72,6 +74,9 @@ private:
   Step step_ = Step::Top;
   int  choice_ = 0;
   TextEntry entry_;
+
+  int      speed_ = 100;     // pump speed being set (percent)
+  uint32_t lastTurnMs_ = 0;  // to detect a fast spin
 
   // Network chosen but not saved until its password is entered.
   WifiMode pendingMode_ = WifiMode::Off;

@@ -66,6 +66,8 @@ The pins are grouped for an easy PCB layout. With the DevKit's antenna pointing 
 | 7    | 12   |
 | 8    | 13   |
 
+Pumps are driven with 1 kHz PWM at a 5/12 duty cycle, so a 12 V supply gives each pump an effective maximum of 5 V. The **Pump speed** setting scales this from 0 to 100% (0 to 5 V). Change `PUMP_MAX_VOLTS` or `PUMP_SUPPLY_VOLTS` in `Config.h` to adjust it (and in `PumpDriverTest.ino`, which has its own copy), then recalibrate. Each pump needs a fast flyback diode (e.g. Schottky) across it, because PWM switches the motor off 1000 times a second.
+
 ### Pull-down resistors
 
 Put a **10 kOhm resistor from each pump's MOSFET gate to GND**. It goes on the PCB between the ESP32 pin and the MOSFET gate trace, then to GND.
@@ -208,6 +210,7 @@ WiFi starts **off**. Set it up on the machine: scroll to the last menu entry, **
   - **WiFi off**.
 - **Web PIN**: what the page asks for before sending orders (default `1234`).
 - **Web address**: the address to open on the register, plus the network and PIN. It updates when WiFi connects.
+- **Pump speed**: 0-100% of the 5 V maximum (default 100%). Turn to change it, press to save. Lower speeds pour for proportionally longer, which is approximate, and a pump may not turn at all at very low speeds. At 0% the machine refuses to pour. Calibrate at 100%.
 
 Typing a password works like typing a drink name, but with four pages of characters: `abc`, `ABC`, `123` (digits, space and common symbols) and `#$%`. After the last character on a page is the page switch (bottom right, shows the next page), then **Delete letter**, **Done** and **Cancel**. A space shows as a small bracket.
 

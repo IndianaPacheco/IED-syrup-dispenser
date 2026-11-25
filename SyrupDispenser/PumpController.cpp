@@ -7,12 +7,25 @@ void PumpController::begin() {
     digitalWrite(PUMP_PINS[i], LOW);
     pinMode(PUMP_PINS[i], OUTPUT);
     digitalWrite(PUMP_PINS[i], LOW);
+
+    // Hand the pin to the PWM hardware at 0% duty. From here on it is
+    // controlled with ledcWrite() only. If this fails, ledcWrite()
+    // fails too, and start() reports it.
+    ledcAttach(PUMP_PINS[i], PUMP_PWM_FREQ_HZ, PUMP_PWM_BITS);
+    ledcWrite(PUMP_PINS[i], 0);
   }
   stopAll();
 }
 
-DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT]) {
+DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT],
+                                     int speedPercent) {
   stopAll();
+
+  speedPercent = constrain(speedPercent, 0, 100);
+  if (speedPercent == 0) {
+    return DispenseResult::SpeedZero;
+  }
+  const uint32_t duty = PUMP_PWM_MAX_DUTY * speedPercent / 100;
 
   // Pass 1: work out every run time. If anything is wrong we return
   // before a single pump has been switched on.
@@ -29,8 +42,9 @@ DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT]) {
       return DispenseResult::BadCalibration;
     }
 
-    // time (ms) = volume (mL) / rate (mL/s) * 1000
-    float ms = (amountsMl[i] / rate) * 1000.0f;
+    // time (ms) = volume (mL) / rate (mL/s) * 1000, where the rate
+    // was measured at 100% speed and is assumed to scale with speed.
+    float ms = (amountsMl[i] / rate) * 1000.0f * 100.0f / speedPercent;
     if (!isfinite(ms) || ms > MAX_PUMP_RUN_MS) {
       return DispenseResult::DoseTooLong;
     }
@@ -51,7 +65,10 @@ DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT]) {
     durationMs_[i] = durations[i];
     if (durations[i] > 0) {
       running_[i] = true;
-      digitalWrite(PUMP_PINS[i], HIGH);
+      if (!ledcWrite(PUMP_PINS[i], duty)) {
+        stopAll();
+        return DispenseResult::DriverError;
+      }
     }
   }
 
@@ -70,7 +87,7 @@ bool PumpController::update() {
     }
 
     if (elapsed >= durationMs_[i]) {
-      digitalWrite(PUMP_PINS[i], LOW);
+      ledcWrite(PUMP_PINS[i], 0);
       running_[i] = false;
     } else {
       anyRunning = true;
@@ -82,7 +99,7 @@ bool PumpController::update() {
 
 void PumpController::stopAll() {
   for (int i = 0; i < PUMP_COUNT; i++) {
-    digitalWrite(PUMP_PINS[i], LOW);
+    ledcWrite(PUMP_PINS[i], 0);
     running_[i] = false;
   }
 }

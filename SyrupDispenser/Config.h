@@ -31,11 +31,29 @@ constexpr int PUMP_PINS[PUMP_COUNT] = {
   32, 33, 25, 26, 27, 14, 12, 13
 };
 
+// PWM speed limit: pumps on a 12 V supply never get more than an
+// effective (average) 5 V, so the duty cycle is 5/12 = 41.7%.
+constexpr float PUMP_SUPPLY_VOLTS = 12.0f;
+constexpr float PUMP_MAX_VOLTS    = 5.0f;
+
+constexpr uint32_t PUMP_PWM_FREQ_HZ = 1000;
+constexpr uint8_t  PUMP_PWM_BITS    = 12;  // duty range 0..4096
+
+// Duty value at 100% speed (rounded down: never above max). The Pump
+// speed setting scales it: 0-100% means 0 to PUMP_MAX_VOLTS.
+constexpr uint32_t PUMP_PWM_MAX_DUTY =
+    (uint32_t)((1UL << PUMP_PWM_BITS) * PUMP_MAX_VOLTS / PUMP_SUPPLY_VOLTS);
+
+static_assert(PUMP_MAX_VOLTS > 0 && PUMP_MAX_VOLTS <= PUMP_SUPPLY_VOLTS,
+              "PUMP_MAX_VOLTS must be between 0 and PUMP_SUPPLY_VOLTS");
+
 // Measured flow rate of each pump, in mL per second.
 //
 // These are PLACEHOLDERS. To calibrate a pump: run it for a known
 // time (e.g. 10 s) with the real syrup and tubing, measure the
 // volume, and divide. 50 mL in 10 s -> 5.0 mL/s.
+// Calibrate at 100% pump speed; at lower speeds run times are
+// stretched in proportion. Recalibrate after changing the PWM settings.
 constexpr float PUMP_ML_PER_SECOND[PUMP_COUNT] = {
   5.0f, 5.0f, 5.0f, 5.0f,
   5.0f, 5.0f, 5.0f, 5.0f
@@ -111,6 +129,10 @@ constexpr float EDIT_ML_STEP = 0.5f;
 // EDIT_ML_STEP * EDIT_FAST_MULTIPLIER per click instead.
 constexpr uint32_t EDIT_FAST_TURN_MS    = 60;
 constexpr float    EDIT_FAST_MULTIPLIER = 4.0f;
+
+// Pump speed setting: percent per knob click, slow and fast.
+constexpr int SPEED_STEP      = 1;
+constexpr int SPEED_FAST_STEP = 5;
 
 // ============================================================
 // BARISTA WEB PAGE (WebRemote)

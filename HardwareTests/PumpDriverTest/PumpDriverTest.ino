@@ -14,7 +14,12 @@
     1..8    run that pump for 1 second
     a       run all pumps in order, 1 second each
     c1..c8  run that pump for 10 seconds (flow calibration)
+    p0-p100 set pump speed, % of 5 V (default 100; calibrate at 100)
     s       stop everything
+
+  Pumps run with the same 5/12 PWM (effective 5 V from 12 V) as the
+  real program, so at 100% speed a multimeter on a running pump reads about 5 V DC
+  and about 1.4 V DC on the ESP32 pin.
 
   Calibration: run "cN" with the real syrup and tubing, measure the
   volume dispensed, and divide by 10. Put the result (mL/s) into
@@ -29,11 +34,18 @@ constexpr int PUMP_COUNT = 8;
 constexpr int PUMP_PINS[PUMP_COUNT] = {
   32, 33, 25, 26, 27, 14, 12, 13
 };
+constexpr float PUMP_SUPPLY_VOLTS = 12.0f;
+constexpr float PUMP_MAX_VOLTS    = 5.0f;
+constexpr uint32_t PUMP_PWM_FREQ_HZ = 1000;
+constexpr uint8_t  PUMP_PWM_BITS    = 12;
+constexpr uint32_t PUMP_PWM_MAX_DUTY =
+    (uint32_t)((1UL << PUMP_PWM_BITS) * PUMP_MAX_VOLTS / PUMP_SUPPLY_VOLTS);
 constexpr int STOP_BUTTON_PIN = 15;
 
 constexpr uint32_t PULSE_MS       = 1000;
 constexpr uint32_t CALIBRATION_MS = 10000;
 
+int speedPercent = 100;     // 0-100% of PUMP_MAX_VOLTS
 int activePump = -1;        // -1 = nothing running
 uint32_t pumpStartMs = 0;
 uint32_t pumpDurationMs = 0;
@@ -44,7 +56,7 @@ int commandLength = 0;
 
 void stopAll() {
   for (int i = 0; i < PUMP_COUNT; i++) {
-    digitalWrite(PUMP_PINS[i], LOW);
+    ledcWrite(PUMP_PINS[i], 0);
   }
   activePump = -1;
   sequenceMode = false;
@@ -55,20 +67,35 @@ void runPump(int pump, uint32_t durationMs) {
   activePump = pump;
   pumpStartMs = millis();
   pumpDurationMs = durationMs;
-  digitalWrite(PUMP_PINS[pump], HIGH);
+  if (!ledcWrite(PUMP_PINS[pump], PUMP_PWM_MAX_DUTY * speedPercent / 100)) {
+    stopAll();
+    Serial.printf("Pump %d: PWM ERROR\n", pump + 1);
+    return;
+  }
   Serial.printf("Pump %d ON (GPIO %d) for %lu ms\n",
                 pump + 1, PUMP_PINS[pump], (unsigned long)durationMs);
 }
 
 void printHelp() {
   Serial.println("Commands: 1-8 = 1 s pulse, a = all in order,");
-  Serial.println("          c1-c8 = 10 s calibration run, s = stop");
+  Serial.println("          c1-c8 = 10 s calibration run, s = stop,");
+  Serial.println("          p0-p100 = pump speed in %");
 }
 
 void handleCommand(const char* cmd) {
   if (strcmp(cmd, "s") == 0) {
     stopAll();
     Serial.println("All pumps OFF");
+  } else if (cmd[0] == 'p' && isdigit(cmd[1])) {
+    char* end;
+    long percent = strtol(cmd + 1, &end, 10);
+    if (*end != '\0' || percent > 100) {
+      Serial.println("Speed must be 0 to 100");
+      return;
+    }
+    stopAll();  // the new speed applies to the next run
+    speedPercent = percent;
+    Serial.printf("Pump speed %d%%\n", speedPercent);
   } else if (strcmp(cmd, "a") == 0) {
     runPump(0, PULSE_MS);
     sequenceMode = true;
@@ -102,7 +129,7 @@ void updatePump() {
     return;
   }
 
-  digitalWrite(PUMP_PINS[activePump], LOW);
+  ledcWrite(PUMP_PINS[activePump], 0);
   Serial.printf("Pump %d OFF\n", activePump + 1);
 
   int next = activePump + 1;
@@ -124,6 +151,8 @@ void setup() {
     digitalWrite(PUMP_PINS[i], LOW);
     pinMode(PUMP_PINS[i], OUTPUT);
     digitalWrite(PUMP_PINS[i], LOW);
+    ledcAttach(PUMP_PINS[i], PUMP_PWM_FREQ_HZ, PUMP_PWM_BITS);
+    ledcWrite(PUMP_PINS[i], 0);
   }
   pinMode(STOP_BUTTON_PIN, INPUT_PULLUP);
 

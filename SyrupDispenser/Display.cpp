@@ -131,6 +131,17 @@ void Display::showNetworkInfo(const char* network, const char* address,
   printLine(3, "");
 }
 
+void Display::showSpeedEntry(int percent) {
+  char value[LCD_COLUMNS + 1];
+  snprintf(value, sizeof(value), "%d%% = %.1f V", percent,
+           PUMP_MAX_VOLTS * percent / 100);
+
+  printLine(0, "Pump speed");
+  printLine(1, value);
+  printLine(2, percent == 0 ? "Pumps will not run" : "");
+  printLine(3, "Press to save");
+}
+
 void Display::showTextPicker(const char* label, const char* text,
                              const char* chars, int selected,
                              const char* nextPage) {
