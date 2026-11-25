@@ -31,6 +31,11 @@ public:
   void showDone();
   void showCancelled();
 
+  // Cleaning mode: No / Yes (selected = 0..1), running, and the end.
+  void showCleanConfirm(int selected);
+  void showCleaning(int secondsLeft);
+  void showCleanEnd(bool stopped);
+
   // A drink ordered from the web page, waiting for the knob press.
   void showRemoteOrder(const char* recipeName);
 
@@ -52,9 +57,6 @@ public:
   // The Web address screen: network, address, PIN.
   void showNetworkInfo(const char* network, const char* address,
                        const char* pin);
-
-  // Setting the pump speed, 0-100%.
-  void showSpeedEntry(int percent);
 
   // Typing text (see TextEntry): label and text on top, then the
   // page's characters, then a ">" spot for the page switch showing

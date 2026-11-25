@@ -5,10 +5,10 @@
 
 // Top list, in knob order.
 enum TopItem {
-  TOP_NETWORK, TOP_PIN, TOP_ADDRESS, TOP_SPEED, TOP_BACK, TOP_COUNT
+  TOP_NETWORK, TOP_PIN, TOP_ADDRESS, TOP_CLEAN, TOP_BACK, TOP_COUNT
 };
 static const char* const TOP_LABELS[TOP_COUNT] = {
-  "WiFi network", "Web PIN", "Web address", "Pump speed", "Back"
+  "WiFi network", "Web PIN", "Web address", "Clean pumps", "Back"
 };
 
 SettingsMenu::SettingsMenu(Display& display, const WebRemote& remote)
@@ -35,15 +35,6 @@ void SettingsMenu::turn(int step) {
       break;
     case Step::Address:
       break;
-    case Step::Speed: {
-      // Spinning the knob quickly takes bigger steps.
-      uint32_t now = millis();
-      int size = now - lastTurnMs_ < EDIT_FAST_TURN_MS ? SPEED_FAST_STEP
-                                                       : SPEED_STEP;
-      lastTurnMs_ = now;
-      speed_ = constrain(speed_ + step * size, 0, 100);
-      break;
-    }
   }
 }
 
@@ -62,11 +53,8 @@ SettingsMenu::Result SettingsMenu::press() {
         case TOP_ADDRESS:
           step_ = Step::Address;
           break;
-        case TOP_SPEED:
-          step_ = Step::Speed;
-          speed_ = settings_.pumpSpeed;
-          lastTurnMs_ = 0;
-          break;
+        case TOP_CLEAN:
+          return Result::Clean;
         case TOP_BACK:
           return Result::Exit;
       }
@@ -151,11 +139,6 @@ SettingsMenu::Result SettingsMenu::press() {
       step_ = Step::Top;
       choice_ = TOP_ADDRESS;
       break;
-
-    case Step::Speed:
-      settings_.pumpSpeed = speed_;
-      step_ = Step::Top;
-      return Result::SaveSpeed;
   }
   return Result::Open;
 }
@@ -182,10 +165,6 @@ void SettingsMenu::draw() {
     case Step::Password:
     case Step::Pin:
       entry_.draw(display_);
-      break;
-
-    case Step::Speed:
-      display_.showSpeedEntry(speed_);
       break;
 
     case Step::Address: {

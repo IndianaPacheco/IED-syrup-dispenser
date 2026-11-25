@@ -42,9 +42,12 @@
     address), saved to the SD card:
     MENU --press--> SETTINGS --Back--> MENU
 
+    SETTINGS --Clean pumps--> CLEAN CONFIRM --Yes--> CLEANING (all pumps
+    at 12 V) --time up, press, or stop--> CLEAN END --press--> MENU
+
     Web orders and web drink changes (Drinks tab: add, edit, delete)
     are only taken while nobody is using the knob (MENU, DONE,
-    CANCELLED, ERROR). Nothing pours until someone at the machine
+    CANCELLED, CLEAN END, ERROR). Nothing pours until someone at the machine
     puts a cup down and presses the knob:
     web order --> REMOTE ORDER --press--> DISPENSING
                        |
@@ -99,6 +102,9 @@ enum class State {
   Done,           // drink finished
   Cancelled,      // stopped by the stop button
   Program,        // creating or editing a drink in the DrinkEditor
+  CleanConfirm,   // "Clean all pumps?" No / Yes
+  Cleaning,       // every pump running at full power
+  CleanEnd,       // cleaning finished or stopped
   RemoteOrder,    // web order shown; waiting for the knob press
   Settings,       // in the SettingsMenu
   Error,          // problem with one recipe; press to return to menu
@@ -111,9 +117,10 @@ enum Option { OPTION_POUR, OPTION_EDIT, OPTION_DELETE, OPTION_BACK, OPTION_COUNT
 State state = State::Menu;
 int selectedRecipe = 0;      // index into the menu; past the drinks
                              // come "+ New drink" and "Settings"
-int optionChoice = 0;        // where the ">" is in OPTIONS / DELETE CONFIRM
+int optionChoice = 0;        // where the ">" is in OPTIONS and No / Yes screens
 int editingRecipe = -1;      // recipe open in the editor; -1 = new drink
 int shownActivePumps = -1;   // last pump count drawn on the LCD
+int shownCleanSeconds = -1;  // last cleaning countdown drawn
 
 // ============================================================
 // STATE TRANSITIONS
@@ -176,21 +183,59 @@ void openSettings() {
   settingsMenu.draw();
 }
 
+void showCleanConfirm() {
+  state = State::CleanConfirm;
+  optionChoice = 0;  // "No", so a stray press can't start it
+  display.showCleanConfirm(optionChoice);
+}
+
+void startCleaning() {
+  if (!pumps.startCleaning()) {
+    showRecipeError("Pump driver error");
+    return;
+  }
+  state = State::Cleaning;
+  shownCleanSeconds = -1;  // force the first screen update
+  Serial.println("Cleaning started: all pumps at full power.");
+}
+
+// Cleaning ran out its time (stopped = false) or was stopped.
+void endCleaning(bool stopped) {
+  pumps.stopAll();
+  state = State::CleanEnd;
+  display.showCleanEnd(stopped);
+  Serial.println(stopped ? "Cleaning stopped." : "Cleaning done.");
+}
+
+// Called every loop while cleaning.
+void updateCleaning() {
+  if (!pumps.update()) {
+    endCleaning(false);
+    return;
+  }
+
+  int seconds = pumps.secondsLeft();
+  if (seconds != shownCleanSeconds) {
+    shownCleanSeconds = seconds;
+    display.showCleaning(seconds);
+  }
+}
+
 void handleSettingsResult(SettingsMenu::Result result) {
   switch (result) {
     case SettingsMenu::Result::Open:
       break;
     case SettingsMenu::Result::Save:
-    case SettingsMenu::Result::SaveSpeed:
       netSettings = settingsMenu.settings();
       if (!saveSettings(netSettings)) {
         showRecipeError("Settings not saved");
         return;
       }
-      if (result == SettingsMenu::Result::Save) {
-        remote.reconnect();
-      }
+      remote.reconnect();
       break;
+    case SettingsMenu::Result::Clean:
+      showCleanConfirm();
+      return;
     case SettingsMenu::Result::Exit:
       goToMenu();
       return;
@@ -284,7 +329,7 @@ void startDispensing() {
     return;
   }
 
-  switch (pumps.start(amountsMl, netSettings.pumpSpeed)) {
+  switch (pumps.start(amountsMl)) {
     case DispenseResult::Started:
       state = State::Dispensing;
       shownActivePumps = -1;  // force the first screen update
@@ -299,9 +344,6 @@ void startDispensing() {
       break;
     case DispenseResult::DoseTooLong:
       showRecipeError("Dose too long");
-      break;
-    case DispenseResult::SpeedZero:
-      showRecipeError("Pump speed is 0%");
       break;
     case DispenseResult::DriverError:
       showRecipeError("Pump driver error");
@@ -337,6 +379,11 @@ void onEncoderTurn(int step) {
     case State::Options:
       optionChoice = (optionChoice + step + OPTION_COUNT) % OPTION_COUNT;
       drawMenu();
+      break;
+
+    case State::CleanConfirm:
+      optionChoice = (optionChoice + step + 2) % 2;
+      display.showCleanConfirm(optionChoice);
       break;
 
     case State::DeleteConfirm:
@@ -391,8 +438,21 @@ void onSelectPress() {
       handleSettingsResult(settingsMenu.press());
       break;
 
+    case State::CleanConfirm:
+      if (optionChoice == 1) {  // "Yes"
+        startCleaning();
+      } else {
+        openSettings();
+      }
+      break;
+
+    case State::Cleaning:
+      endCleaning(true);
+      break;
+
     case State::Done:
     case State::Cancelled:
+    case State::CleanEnd:
     case State::Error:
       goToMenu();
       break;
@@ -408,7 +468,10 @@ void onSelectPress() {
 void onStopPress() {
   if (state == State::Dispensing || state == State::RemoteOrder) {
     cancelDrink();
-  } else if (state == State::Options || state == State::DeleteConfirm) {
+  } else if (state == State::Cleaning) {
+    endCleaning(true);
+  } else if (state == State::Options || state == State::DeleteConfirm ||
+             state == State::CleanConfirm) {
     goToMenu();
   }
 }
@@ -447,7 +510,8 @@ void updateDispensing() {
 // for this too.
 bool machineIsFree() {
   return state == State::Menu || state == State::Done ||
-         state == State::Cancelled || state == State::Error;
+         state == State::Cancelled || state == State::CleanEnd ||
+         state == State::Error;
 }
 
 // The page's list is stale if this drink was edited or deleted on
@@ -491,6 +555,10 @@ OrderResult onRemoteOrder(int index, const char* name) {
 bool onRemoteStop() {
   if (state == State::Dispensing || state == State::RemoteOrder) {
     cancelDrink();
+    return true;
+  }
+  if (state == State::Cleaning) {
+    endCleaning(true);
     return true;
   }
   return false;
@@ -550,7 +618,8 @@ EditResult onRemoteDelete(int index, const char* oldName) {
 RemoteStatus remoteStatus() {
   const char* drink = recipes.name(selectedRecipe);
   switch (state) {
-    case State::Menu:        return {"idle", ""};
+    case State::Menu:
+    case State::CleanEnd:    return {"idle", ""};
     case State::RemoteOrder: return {"waiting", drink};
     case State::Dispensing:  return {"pouring", drink};
     case State::Done:        return {"done", drink};
@@ -631,6 +700,8 @@ void loop() {
 
   if (state == State::Dispensing) {
     updateDispensing();
+  } else if (state == State::Cleaning) {
+    updateCleaning();
   }
 
   // The Web address screen updates itself once WiFi connects.

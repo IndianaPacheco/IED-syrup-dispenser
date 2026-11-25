@@ -2,8 +2,9 @@
   PumpController.h
   ----------------
   Owns the eight pump driver outputs. Nothing else in the program
-  should write to a pump pin. Running pumps are driven with PWM so
-  they never get more than PUMP_MAX_VOLTS on average (see Config.h).
+  should write to a pump pin. Pouring uses PWM at an effective
+  PUMP_POUR_VOLTS; only startCleaning() uses the full supply voltage
+  (see Config.h).
 
   Dispensing is non-blocking: start() switches the pumps on and
   update() must be called every loop() to switch each one off when
@@ -21,7 +22,6 @@ enum class DispenseResult {
   EmptyRecipe,     // every requested amount was 0 mL
   BadCalibration,  // a needed pump has a zero/invalid mL-per-second value
   DoseTooLong,     // a pump would run longer than MAX_PUMP_RUN_MS
-  SpeedZero,       // the pump speed setting is 0%
   DriverError      // the PWM output could not be switched on
 };
 
@@ -32,10 +32,16 @@ public:
   void begin();
 
   // Convert each volume (mL) into a run time and start the pumps.
-  // speedPercent (0-100) is the share of PUMP_MAX_VOLTS to run at;
-  // slower speeds run proportionally longer to pour the same volume.
+  // Pumps run at an effective PUMP_POUR_VOLTS.
   // All amounts are validated before any pump is switched on.
-  DispenseResult start(const float amountsMl[PUMP_COUNT], int speedPercent);
+  DispenseResult start(const float amountsMl[PUMP_COUNT]);
+
+  // Run every pump at the full supply voltage for CLEAN_RUN_MS.
+  // Returns false (all pumps off) if a pump can't be switched on.
+  bool startCleaning();
+
+  // Seconds until the longest-running pump switches off, rounded up.
+  int secondsLeft() const;
 
   // Switch off pumps whose time is up. Call every loop().
   // Returns true while at least one pump is still running.
@@ -49,6 +55,10 @@ public:
   int activeCount() const;
 
 private:
+  // Switch on every pump with a non-zero run time, all at 'duty'.
+  // On failure everything is switched off again.
+  bool runPumps(const uint32_t durations[PUMP_COUNT], uint32_t duty);
+
   bool     running_[PUMP_COUNT]    = {};
   uint32_t durationMs_[PUMP_COUNT] = {};
   uint32_t startMs_                = 0;  // all pumps start together

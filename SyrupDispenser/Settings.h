@@ -1,13 +1,13 @@
 /*
   Settings.h
   ----------
-  The WiFi network, its password, the web PIN and the pump speed,
-  saved on the SD card in SETTINGS_FILE so they never have to be in the code (or on
+  The WiFi network, its password, and the web PIN, saved on the SD
+  card in SETTINGS_FILE so they never have to be in the code (or on
   GitHub). They are set on the machine in the Settings menu.
 
   The file is plain JSON, for example:
     {"wifi":"join","ssid":"Cafe","password":"secret123",
-     "ap_password":"","pin":"1234","pump_speed":100}
+     "ap_password":"","pin":"1234"}
 
   Call loadSettings() after the SD card is started (RecipeManager's
   beginCard()).
@@ -34,7 +34,6 @@ struct NetworkSettings {
   char password[PASSWORD_SIZE]   = "";  // for 'ssid'
   char apPassword[PASSWORD_SIZE] = "";  // for our own network; "" = open
   char pin[PIN_SIZE]             = "1234";
-  int  pumpSpeed                 = 100;  // 0-100% of PUMP_MAX_VOLTS
 };
 
 // Read the settings from the card. If the file is missing or broken,

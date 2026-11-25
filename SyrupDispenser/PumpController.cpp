@@ -17,15 +17,8 @@ void PumpController::begin() {
   stopAll();
 }
 
-DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT],
-                                     int speedPercent) {
+DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT]) {
   stopAll();
-
-  speedPercent = constrain(speedPercent, 0, 100);
-  if (speedPercent == 0) {
-    return DispenseResult::SpeedZero;
-  }
-  const uint32_t duty = PUMP_PWM_MAX_DUTY * speedPercent / 100;
 
   // Pass 1: work out every run time. If anything is wrong we return
   // before a single pump has been switched on.
@@ -42,9 +35,8 @@ DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT],
       return DispenseResult::BadCalibration;
     }
 
-    // time (ms) = volume (mL) / rate (mL/s) * 1000, where the rate
-    // was measured at 100% speed and is assumed to scale with speed.
-    float ms = (amountsMl[i] / rate) * 1000.0f * 100.0f / speedPercent;
+    // time (ms) = volume (mL) / rate (mL/s) * 1000
+    float ms = (amountsMl[i] / rate) * 1000.0f;
     if (!isfinite(ms) || ms > MAX_PUMP_RUN_MS) {
       return DispenseResult::DoseTooLong;
     }
@@ -60,6 +52,21 @@ DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT],
   // Pass 2: everything is valid, so switch the pumps on together.
   // Timed dosing is approximate; a flow sensor or scale would be
   // needed to verify the volume actually dispensed.
+  return runPumps(durations, PUMP_POUR_DUTY) ? DispenseResult::Started
+                                             : DispenseResult::DriverError;
+}
+
+bool PumpController::startCleaning() {
+  uint32_t durations[PUMP_COUNT];
+  for (int i = 0; i < PUMP_COUNT; i++) {
+    durations[i] = CLEAN_RUN_MS;
+  }
+  return runPumps(durations, PUMP_CLEAN_DUTY);
+}
+
+bool PumpController::runPumps(const uint32_t durations[PUMP_COUNT],
+                              uint32_t duty) {
+  stopAll();
   startMs_ = millis();
   for (int i = 0; i < PUMP_COUNT; i++) {
     durationMs_[i] = durations[i];
@@ -67,12 +74,22 @@ DispenseResult PumpController::start(const float amountsMl[PUMP_COUNT],
       running_[i] = true;
       if (!ledcWrite(PUMP_PINS[i], duty)) {
         stopAll();
-        return DispenseResult::DriverError;
+        return false;
       }
     }
   }
+  return true;
+}
 
-  return DispenseResult::Started;
+int PumpController::secondsLeft() const {
+  uint32_t elapsed = millis() - startMs_;
+  uint32_t longest = 0;
+  for (int i = 0; i < PUMP_COUNT; i++) {
+    if (running_[i] && durationMs_[i] > elapsed) {
+      longest = max(longest, durationMs_[i] - elapsed);
+    }
+  }
+  return (longest + 999) / 1000;
 }
 
 bool PumpController::update() {

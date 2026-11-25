@@ -55,8 +55,6 @@ bool loadSettings(NetworkSettings& settings) {
   readField(doc, "password",    settings.password,   sizeof(settings.password));
   readField(doc, "ap_password", settings.apPassword, sizeof(settings.apPassword));
   readField(doc, "pin",         settings.pin,        sizeof(settings.pin));
-  int speed = doc["pump_speed"] | 100;
-  settings.pumpSpeed = constrain(speed, 0, 100);
   return true;
 }
 
@@ -69,7 +67,6 @@ bool saveSettings(const NetworkSettings& settings) {
   doc["password"]    = settings.password;
   doc["ap_password"] = settings.apPassword;
   doc["pin"]         = settings.pin;
-  doc["pump_speed"]  = settings.pumpSpeed;
 
   // Write a temp file first so a failed write can't wipe the
   // settings that are already there.

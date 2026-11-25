@@ -78,6 +78,30 @@ void Display::showCancelled() {
   printLine(3, "");
 }
 
+void Display::showCleanConfirm(int selected) {
+  printLine(0, "Clean all pumps?");
+  printLine(1, "Lines in water, and");
+  printLine(2, "big container under");
+  printOptionPair(3, "No", selected == 0, "Yes", selected == 1);
+}
+
+void Display::showCleaning(int secondsLeft) {
+  char left[LCD_COLUMNS + 1];
+  snprintf(left, sizeof(left), "%d s left", secondsLeft);
+
+  printLine(0, "CLEANING");
+  printLine(1, left);
+  printLine(2, "");
+  printLine(3, "Press to stop");
+}
+
+void Display::showCleanEnd(bool stopped) {
+  printLine(0, stopped ? "CLEANING STOPPED" : "Cleaning done");
+  printLine(1, "All pumps off");
+  printLine(2, "");
+  printLine(3, "");
+}
+
 void Display::showRemoteOrder(const char* recipeName) {
   printLine(0, "Web order:");
   printWrapped(1, recipeName);
@@ -129,17 +153,6 @@ void Display::showNetworkInfo(const char* network, const char* address,
   printLine(1, address);
   printLine(2, pin);
   printLine(3, "");
-}
-
-void Display::showSpeedEntry(int percent) {
-  char value[LCD_COLUMNS + 1];
-  snprintf(value, sizeof(value), "%d%% = %.1f V", percent,
-           PUMP_MAX_VOLTS * percent / 100);
-
-  printLine(0, "Pump speed");
-  printLine(1, value);
-  printLine(2, percent == 0 ? "Pumps will not run" : "");
-  printLine(3, "Press to save");
 }
 
 void Display::showTextPicker(const char* label, const char* text,
